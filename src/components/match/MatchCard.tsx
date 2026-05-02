@@ -20,10 +20,9 @@ interface MatchCardProps {
 
 export function MatchCard({ match }: MatchCardProps) {
   const { theme: t } = useTheme();
-  const m = match;
-  const mult = STAGE_MULT[m.stage];
+  const mult = STAGE_MULT[match.stage];
 
-  const kickoffTime = m.kickoff
+  const kickoffTime = match.kickoff
     .toDate()
     .toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 
@@ -55,11 +54,11 @@ export function MatchCard({ match }: MatchCardProps) {
             textTransform: 'uppercase',
           }}
         >
-          {m.stageLabel}{' '}
+          {match.stageLabel}{' '}
           <span style={{ color: t.inkDim }}>·</span>{' '}
           <span style={{ color: t.yellow }}>×{mult}</span>
         </div>
-        <MatchStatePill match={m} />
+        <MatchStatePill match={match} />
       </div>
 
       {/* teams + score center */}
@@ -74,7 +73,7 @@ export function MatchCard({ match }: MatchCardProps) {
             minWidth: 0,
           }}
         >
-          <Flag code={m.homeTeam.code} size={20} />
+          <Flag code={match.homeTeam.code} size={20} />
           <span
             style={{
               fontFamily: FONTS.display,
@@ -86,12 +85,12 @@ export function MatchCard({ match }: MatchCardProps) {
               whiteSpace: 'nowrap',
             }}
           >
-            {m.homeTeam.name}
+            {match.homeTeam.name}
           </span>
         </div>
 
         {/* center */}
-        <MatchCenter match={m} />
+        <MatchCenter match={match} />
 
         {/* away */}
         <div
@@ -104,7 +103,7 @@ export function MatchCard({ match }: MatchCardProps) {
             flexDirection: 'row-reverse',
           }}
         >
-          <Flag code={m.awayTeam.code} size={20} />
+          <Flag code={match.awayTeam.code} size={20} />
           <span
             style={{
               fontFamily: FONTS.display,
@@ -117,16 +116,16 @@ export function MatchCard({ match }: MatchCardProps) {
               textAlign: 'right',
             }}
           >
-            {m.awayTeam.name}
+            {match.awayTeam.name}
           </span>
         </div>
       </div>
 
       {/* finished — scoring breakdown (Phase 4: pass pick when available) */}
-      {m.status === 'finished' && <FinishedBreakdown />}
+      {match.status === 'finished' && <FinishedBreakdown match={match} />}
 
       {/* live — locked indicator */}
-      {m.status === 'live' && (
+      {match.status === 'live' && (
         <div
           style={{
             marginTop: 10,
@@ -156,7 +155,7 @@ export function MatchCard({ match }: MatchCardProps) {
       )}
 
       {/* upcoming — kickoff info */}
-      {m.status === 'upcoming' && (
+      {match.status === 'upcoming' && (
         <div
           style={{
             marginTop: 8,

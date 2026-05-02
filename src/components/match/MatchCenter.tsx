@@ -41,8 +41,8 @@ export function MatchCenter({ match }: MatchCenterProps) {
   const { status } = match;
 
   if (status === 'live') {
-    const home = match.score?.home ?? 0;
-    const away = match.score?.away ?? 0;
+    const home = match.score?.home ?? '—';
+    const away = match.score?.away ?? '—';
     return (
       <div
         style={{
@@ -67,8 +67,8 @@ export function MatchCenter({ match }: MatchCenterProps) {
   }
 
   if (status === 'finished') {
-    const home = match.score?.home ?? 0;
-    const away = match.score?.away ?? 0;
+    const home = match.score?.home ?? '—';
+    const away = match.score?.away ?? '—';
     return (
       <div
         style={{

@@ -1,0 +1,9 @@
+- generic [ref=e3]:
+  - generic [ref=e4]: 🐇
+  - generic [ref=e5]: Firebase not configured
+  - generic [ref=e6]:
+    - text: Copy
+    - code [ref=e7]: .env.example
+    - text: to
+    - code [ref=e8]: .env.local
+    - text: and fill in your Firebase project credentials.
