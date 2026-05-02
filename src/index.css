@@ -11,3 +11,12 @@ body {
 #root {
   min-height: 100svh;
 }
+
+@keyframes br-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.4; transform: scale(0.75); }
+}
+
+.br-pulse {
+  animation: br-pulse 1.4s infinite;
+}
