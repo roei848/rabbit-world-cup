@@ -105,7 +105,7 @@ async function getSeasonId(): Promise<number> {
 // ── inviteUser ────────────────────────────────────────────────
 // Callable: admin sends an invite link for a given email.
 // Requires caller to have isAdmin custom claim.
-export const inviteUser = onCall(async (request) => {
+export const inviteUser = onCall({ invoker: 'public' }, async (request) => {
   // Verify admin via custom claims (set via Firebase Auth console or admin SDK)
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Must be signed in');
@@ -368,7 +368,7 @@ export const lockPicks = onSchedule('every 5 minutes', async () => {
 // ── seedTournament ────────────────────────────────────────────
 // HTTPS callable (admin only). Fetches all WC 2026 fixtures from
 // api-football.com and seeds /matches in Firestore.
-export const seedTournament = onCall(async (request) => {
+export const seedTournament = onCall({ invoker: 'public' }, async (request) => {
   // Verify admin
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Must be signed in');

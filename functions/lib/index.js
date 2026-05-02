@@ -101,7 +101,7 @@ async function getSeasonId() {
 // ── inviteUser ────────────────────────────────────────────────
 // Callable: admin sends an invite link for a given email.
 // Requires caller to have isAdmin custom claim.
-exports.inviteUser = (0, https_1.onCall)(async (request) => {
+exports.inviteUser = (0, https_1.onCall)({ invoker: 'public' }, async (request) => {
     // Verify admin via custom claims (set via Firebase Auth console or admin SDK)
     const uid = request.auth?.uid;
     if (!uid)
@@ -321,7 +321,7 @@ exports.lockPicks = (0, scheduler_1.onSchedule)('every 5 minutes', async () => {
 // ── seedTournament ────────────────────────────────────────────
 // HTTPS callable (admin only). Fetches all WC 2026 fixtures from
 // api-football.com and seeds /matches in Firestore.
-exports.seedTournament = (0, https_1.onCall)(async (request) => {
+exports.seedTournament = (0, https_1.onCall)({ invoker: 'public' }, async (request) => {
     // Verify admin
     const uid = request.auth?.uid;
     if (!uid)
