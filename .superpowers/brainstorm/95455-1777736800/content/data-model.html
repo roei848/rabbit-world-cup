@@ -1,0 +1,142 @@
+<h2>Firestore Data Model</h2>
+<p class="subtitle">Collections, documents, and how they connect via userId</p>
+
+<div style="font-family: 'Inter', system-ui, sans-serif; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; padding: 8px 0;">
+
+  <!-- users -->
+  <div style="background: #0f172a; border: 1.5px solid #4f46e5; border-radius: 12px; padding: 16px;">
+    <div style="font-size: 10px; font-weight: 700; color: #818cf8; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 10px;">/users/{userId}</div>
+    <div style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #94a3b8; line-height: 1.8;">
+      <span style="color:#f472b6">uid</span>: string<br>
+      <span style="color:#f472b6">displayName</span>: string<br>
+      <span style="color:#f472b6">email</span>: string<br>
+      <span style="color:#f472b6">photoURL</span>: string<br>
+      <span style="color:#f472b6">isAdmin</span>: boolean<br>
+      <span style="color:#f472b6">leagueIds</span>: string[]<br>
+      <span style="color:#f472b6">joinedAt</span>: timestamp<br>
+      <span style="color:#f472b6">status</span>: active | banned
+    </div>
+  </div>
+
+  <!-- picks -->
+  <div style="background: #0f172a; border: 1.5px solid #10b981; border-radius: 12px; padding: 16px;">
+    <div style="font-size: 10px; font-weight: 700; color: #6ee7b7; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 10px;">/picks/{userId}/matches/{matchId}</div>
+    <div style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #94a3b8; line-height: 1.8;">
+      <span style="color:#f472b6">userId</span>: string <span style="color:#475569">← FK</span><br>
+      <span style="color:#f472b6">matchId</span>: string <span style="color:#475569">← FK</span><br>
+      <span style="color:#f472b6">homeGoals</span>: number | null<br>
+      <span style="color:#f472b6">awayGoals</span>: number | null<br>
+      <span style="color:#f472b6">submittedAt</span>: timestamp<br>
+      <span style="color:#f472b6">lockedAt</span>: timestamp<br>
+      <span style="color:#f472b6">points</span>: number | null<br>
+      <span style="color:#f472b6">pointsBreakdown</span>: {<br>
+      &nbsp;&nbsp;<span style="color:#fcd34d">exact</span>: bool,<br>
+      &nbsp;&nbsp;<span style="color:#fcd34d">correctGap</span>: bool,<br>
+      &nbsp;&nbsp;<span style="color:#fcd34d">correctWinner</span>: bool<br>
+      }
+    </div>
+  </div>
+
+  <!-- matches -->
+  <div style="background: #0f172a; border: 1.5px solid #f59e0b; border-radius: 12px; padding: 16px;">
+    <div style="font-size: 10px; font-weight: 700; color: #fcd34d; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 10px;">/matches/{matchId}</div>
+    <div style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #94a3b8; line-height: 1.8;">
+      <span style="color:#f472b6">apiId</span>: number <span style="color:#475569">← api-football id</span><br>
+      <span style="color:#f472b6">homeTeam</span>: { code, name }<br>
+      <span style="color:#f472b6">awayTeam</span>: { code, name }<br>
+      <span style="color:#f472b6">kickoff</span>: timestamp<br>
+      <span style="color:#f472b6">lockAt</span>: timestamp <span style="color:#475569">← kickoff−15m</span><br>
+      <span style="color:#f472b6">stage</span>: group|r16|qf|sf|final<br>
+      <span style="color:#f472b6">stageLabel</span>: string<br>
+      <span style="color:#f472b6">status</span>: upcoming|live|finished<br>
+      <span style="color:#f472b6">score</span>: { home: n, away: n } | null<br>
+      <span style="color:#f472b6">liveMinute</span>: number | null<br>
+      <span style="color:#f472b6">locked</span>: boolean
+    </div>
+  </div>
+
+  <!-- leaderboard -->
+  <div style="background: #0f172a; border: 1.5px solid #ec4899; border-radius: 12px; padding: 16px;">
+    <div style="font-size: 10px; font-weight: 700; color: #f9a8d4; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 10px;">/leaderboard/{leagueId}/entries/{userId}</div>
+    <div style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #94a3b8; line-height: 1.8;">
+      <span style="color:#f472b6">userId</span>: string <span style="color:#475569">← FK</span><br>
+      <span style="color:#f472b6">displayName</span>: string<br>
+      <span style="color:#f472b6">totalPoints</span>: number<br>
+      <span style="color:#f472b6">exactScores</span>: number<br>
+      <span style="color:#f472b6">rank</span>: number<br>
+      <span style="color:#f472b6">prevRank</span>: number<br>
+      <span style="color:#f472b6">lastUpdated</span>: timestamp
+    </div>
+  </div>
+
+  <!-- leagues -->
+  <div style="background: #0f172a; border: 1.5px solid #8b5cf6; border-radius: 12px; padding: 16px;">
+    <div style="font-size: 10px; font-weight: 700; color: #c4b5fd; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 10px;">/leagues/{leagueId}</div>
+    <div style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #94a3b8; line-height: 1.8;">
+      <span style="color:#f472b6">name</span>: string<br>
+      <span style="color:#f472b6">code</span>: string <span style="color:#475569">← join code</span><br>
+      <span style="color:#f472b6">color</span>: string<br>
+      <span style="color:#f472b6">memberIds</span>: string[]<br>
+      <span style="color:#f472b6">createdBy</span>: string <span style="color:#475569">← admin uid</span><br>
+      <span style="color:#f472b6">createdAt</span>: timestamp
+    </div>
+  </div>
+
+  <!-- bonusPicks -->
+  <div style="background: #0f172a; border: 1.5px solid #06b6d4; border-radius: 12px; padding: 16px;">
+    <div style="font-size: 10px; font-weight: 700; color: #67e8f9; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 10px;">/bonusPicks/{userId}</div>
+    <div style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #94a3b8; line-height: 1.8;">
+      <span style="color:#f472b6">userId</span>: string <span style="color:#475569">← FK</span><br>
+      <span style="color:#f472b6">topScorer</span>: {<br>
+      &nbsp;&nbsp;<span style="color:#fcd34d">playerId</span>: number,<br>
+      &nbsp;&nbsp;<span style="color:#fcd34d">playerName</span>: string,<br>
+      &nbsp;&nbsp;<span style="color:#fcd34d">submittedAt</span>: timestamp<br>
+      }<br>
+      <span style="color:#f472b6">worldCupWinner</span>: {<br>
+      &nbsp;&nbsp;<span style="color:#fcd34d">teamCode</span>: string,<br>
+      &nbsp;&nbsp;<span style="color:#fcd34d">submittedAt</span>: timestamp<br>
+      }
+    </div>
+  </div>
+
+  <!-- settings (spans 2) -->
+  <div style="background: #0f172a; border: 1.5px solid #64748b; border-radius: 12px; padding: 16px; grid-column: span 2;">
+    <div style="font-size: 10px; font-weight: 700; color: #94a3b8; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 10px;">/settings/scoring  (single document)</div>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+      <div style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #94a3b8; line-height: 1.8;">
+        <span style="color:#f472b6">stageMultipliers</span>: {<br>
+        &nbsp;&nbsp;<span style="color:#fcd34d">group</span>: 1,<br>
+        &nbsp;&nbsp;<span style="color:#fcd34d">r16</span>: 2,<br>
+        &nbsp;&nbsp;<span style="color:#fcd34d">qf</span>: 3,<br>
+        &nbsp;&nbsp;<span style="color:#fcd34d">sf</span>: 4,<br>
+        &nbsp;&nbsp;<span style="color:#fcd34d">final</span>: 5<br>
+        }
+      </div>
+      <div style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #94a3b8; line-height: 1.8;">
+        <span style="color:#f472b6">basePoints</span>: {<br>
+        &nbsp;&nbsp;<span style="color:#fcd34d">exactScore</span>: 3,<br>
+        &nbsp;&nbsp;<span style="color:#fcd34d">correctGap</span>: 2,<br>
+        &nbsp;&nbsp;<span style="color:#fcd34d">correctWinner</span>: 1<br>
+        }<br>
+        <span style="color:#f472b6">bonusPoints</span>: {<br>
+        &nbsp;&nbsp;<span style="color:#fcd34d">topScorer</span>: 25,<br>
+        &nbsp;&nbsp;<span style="color:#fcd34d">worldCupWinner</span>: 50<br>
+        }
+      </div>
+    </div>
+  </div>
+
+  <!-- invites -->
+  <div style="background: #0f172a; border: 1.5px solid #64748b; border-radius: 12px; padding: 16px;">
+    <div style="font-size: 10px; font-weight: 700; color: #94a3b8; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 10px;">/invites/{token}</div>
+    <div style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #94a3b8; line-height: 1.8;">
+      <span style="color:#f472b6">email</span>: string<br>
+      <span style="color:#f472b6">invitedBy</span>: string <span style="color:#475569">← admin uid</span><br>
+      <span style="color:#f472b6">leagueId</span>: string | null<br>
+      <span style="color:#f472b6">used</span>: boolean<br>
+      <span style="color:#f472b6">expiresAt</span>: timestamp<br>
+      <span style="color:#f472b6">createdAt</span>: timestamp
+    </div>
+  </div>
+
+</div>

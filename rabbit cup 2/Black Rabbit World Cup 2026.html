@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Black Rabbit · World Cup 2026</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; padding: 0; background: #f0eee9; }
+  * { box-sizing: border-box; }
+  @keyframes br-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(1.4); }
+  }
+  @keyframes br-hop {
+    0%, 100% { transform: translateX(-50%) translateY(0); }
+    50% { transform: translateX(-50%) translateY(-18px); }
+  }
+  @keyframes br-shadow {
+    0%, 100% { transform: translateX(-50%) scale(1); opacity: 0.3; }
+    50% { transform: translateX(-50%) scale(0.6); opacity: 0.12; }
+  }
+  @keyframes br-ear-l {
+    0%, 100% { transform: rotate(-4deg); }
+    50% { transform: rotate(-18deg); }
+  }
+  @keyframes br-ear-r {
+    0%, 100% { transform: rotate(4deg); }
+    50% { transform: rotate(18deg); }
+  }
+  @keyframes br-paw {
+    0%, 100% { opacity: 0.25; transform: translateY(2px); }
+    20%, 50% { opacity: 1; transform: translateY(0); }
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="tokens.jsx"></script>
+<script type="text/babel" src="components.jsx"></script>
+<script type="text/babel" src="data.jsx"></script>
+<script type="text/babel" src="primitives.jsx"></script>
+<script type="text/babel" src="screens-mobile.jsx"></script>
+<script type="text/babel" src="screens-admin.jsx"></script>
+<script type="text/babel" src="screens-desktop.jsx"></script>
+
+<script type="text/babel">
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "theme": "light",
+  "matchState": "as-designed",
+  "density": "compact"
+}/*EDITMODE-END*/;
+
+function App() {
+  const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
+  const t = BR_THEMES[tweaks.theme] || BR_THEMES.dark;
+  const altT = tweaks.theme === 'dark' ? BR_THEMES.light : BR_THEMES.dark;
+  const density = tweaks.density;
+  const forceState = tweaks.matchState === 'as-designed' ? null : tweaks.matchState;
+
+  // Phone artboard wrapper — applies the chosen theme
+  const PhoneArtboard = ({ theme = t, children }) => (
+    <Phone theme={theme}>{children}</Phone>
+  );
+
+  return (
+    <>
+      <DesignCanvas>
+
+        <DCSection id="overview" title="Black Rabbit · World Cup 2026"
+          subtitle="Internal predictions app · mobile-first · dark mode is the hero direction · use Tweaks (top toolbar) to switch theme, density and match state.">
+          <DCArtboard id="leaderboard-hero" label="① Leaderboard · showcase"
+            width={380} height={760}>
+            <PhoneArtboard><LeaderboardScreen theme={t} density={density} /></PhoneArtboard>
+          </DCArtboard>
+          <DCArtboard id="matches-hero" label="② Matches · predictions"
+            width={380} height={760}>
+            <PhoneArtboard><MatchesScreen theme={t} density={density} forceState={forceState} /></PhoneArtboard>
+          </DCArtboard>
+          <DCArtboard id="picks-hero" label="③ My Picks"
+            width={380} height={760}>
+            <PhoneArtboard><PicksScreen theme={t} density={density} /></PhoneArtboard>
+          </DCArtboard>
+          <DCArtboard id="bonus-hero" label="④ Bonus"
+            width={380} height={760}>
+            <PhoneArtboard><BonusScreen theme={t} /></PhoneArtboard>
+          </DCArtboard>
+          <DCArtboard id="leagues-hero" label="⑤ Leagues"
+            width={380} height={760}>
+            <PhoneArtboard><LeaguesScreen theme={t} /></PhoneArtboard>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="theme-pair" title="Both themes · side by side"
+          subtitle="Same leaderboard, dark and light. The yellow stays — surfaces and ink invert.">
+          <DCArtboard id="lb-dark" label="Dark mode" width={380} height={760}>
+            <Phone theme={BR_THEMES.dark}><LeaderboardScreen theme={BR_THEMES.dark} density={density} /></Phone>
+          </DCArtboard>
+          <DCArtboard id="lb-light" label="Light mode" width={380} height={760}>
+            <Phone theme={BR_THEMES.light}><LeaderboardScreen theme={BR_THEMES.light} density={density} /></Phone>
+          </DCArtboard>
+          <DCArtboard id="m-dark" label="Matches · dark" width={380} height={760}>
+            <Phone theme={BR_THEMES.dark}><MatchesScreen theme={BR_THEMES.dark} density={density} /></Phone>
+          </DCArtboard>
+          <DCArtboard id="m-light" label="Matches · light" width={380} height={760}>
+            <Phone theme={BR_THEMES.light}><MatchesScreen theme={BR_THEMES.light} density={density} /></Phone>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="match-states" title="Match card · all three states"
+          subtitle="Upcoming (editable inputs) → Live (locked, current score, pulsing dot) → Finished (breakdown + multiplier).">
+          <DCArtboard id="state-upcoming" label="Upcoming" width={360} height={210}>
+            <div style={{ padding: 16, background: t.bg, height: '100%', fontFamily: FONTS.body }}>
+              <MatchCard match={MATCHES[2]} theme={t} />
+            </div>
+          </DCArtboard>
+          <DCArtboard id="state-live" label="Live · 67'" width={360} height={210}>
+            <div style={{ padding: 16, background: t.bg, height: '100%', fontFamily: FONTS.body }}>
+              <MatchCard match={MATCHES[1]} theme={t} />
+            </div>
+          </DCArtboard>
+          <DCArtboard id="state-finished" label="Finished · scoring breakdown" width={360} height={250}>
+            <div style={{ padding: 16, background: t.bg, height: '100%', fontFamily: FONTS.body }}>
+              <MatchCard match={MATCHES[0]} theme={t} />
+            </div>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="loader-states" title="Rabbit loaders + empty state"
+          subtitle="Set of three: hop · ears · paw prints. The empty state uses the same silhouette.">
+          <DCArtboard id="loader-hop" label="Hopping" width={300} height={220}>
+            <div style={{ background: t.bg, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: FONTS.body }}>
+              <RabbitLoader theme={t} variant="hop" size="lg" />
+            </div>
+          </DCArtboard>
+          <DCArtboard id="loader-ears" label="Ears twitching" width={300} height={220}>
+            <div style={{ background: t.bg, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: FONTS.body }}>
+              <RabbitLoader theme={t} variant="ears" size="lg" />
+            </div>
+          </DCArtboard>
+          <DCArtboard id="loader-paws" label="Paw prints" width={300} height={220}>
+            <div style={{ background: t.bg, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: FONTS.body }}>
+              <RabbitLoader theme={t} variant="paws" size="lg" />
+            </div>
+          </DCArtboard>
+          <DCArtboard id="empty" label="Empty state" width={300} height={220}>
+            <div style={{
+              background: t.bg, height: '100%', display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center', gap: 12, padding: 18, fontFamily: FONTS.body,
+            }}>
+              <div style={{
+                width: 64, height: 64, borderRadius: 18, background: t.yellowTint,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <RabbitMark size={36} color={t.yellow} />
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontFamily: FONTS.display, fontSize: 14, fontWeight: 700, color: t.ink }}>The rabbit is waiting</div>
+                <div style={{ fontFamily: FONTS.body, fontSize: 11, color: t.inkMuted, marginTop: 3 }}>Set your first pick to begin.</div>
+              </div>
+            </div>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="desktop" title="Desktop adaptations"
+          subtitle="Top nav replaces tab bar. Two-column layouts add side panels (movers, scoring legend, streak).">
+          <DCArtboard id="dt-leaderboard" label="Leaderboard · desktop" width={1280} height={820}>
+            <LeaderboardDesktop theme={t} density={density} />
+          </DCArtboard>
+          <DCArtboard id="dt-matches" label="Matches · desktop" width={1280} height={820}>
+            <MatchesDesktop theme={t} density={density} forceState={forceState} />
+          </DCArtboard>
+          <DCArtboard id="dt-admin" label="Admin · desktop" width={1280} height={820}>
+            <AdminPanel theme={t} />
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="components" title="Component sheet"
+          subtitle="The atoms — logo, tab bar, avatars, trends, stat cards, match cards, user rows, scoring legend, toasts, loaders, empty state, palette.">
+          <DCArtboard id="comp-sheet" label="All components" width={1100} height={1500}>
+            <ComponentSheet theme={t} />
+          </DCArtboard>
+        </DCSection>
+
+      </DesignCanvas>
+
+      <TweaksPanel title="Tweaks">
+        <TweakSection label="Theme" />
+        <TweakRadio label="Mode" value={tweaks.theme}
+          options={[{value:'dark', label:'Dark'},{value:'light', label:'Light'}]}
+          onChange={(v) => setTweak('theme', v)} />
+        <TweakSection label="Match card" />
+        <TweakRadio label="Force state" value={tweaks.matchState}
+          options={[
+            {value:'as-designed', label:'Mixed'},
+            {value:'upcoming', label:'Up'},
+            {value:'live', label:'Live'},
+            {value:'finished', label:'Done'},
+          ]}
+          onChange={(v) => setTweak('matchState', v)} />
+        <TweakSection label="Density" />
+        <TweakRadio label="Rows" value={tweaks.density}
+          options={[{value:'compact', label:'Compact'},{value:'comfortable', label:'Comfy'}]}
+          onChange={(v) => setTweak('density', v)} />
+      </TweaksPanel>
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

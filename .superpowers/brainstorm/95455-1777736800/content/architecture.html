@@ -1,0 +1,96 @@
+<h2>System Architecture</h2>
+<p class="subtitle">Black Rabbit World Cup 2026 · Option A: Firestore-first + Cloud Functions</p>
+
+<div style="font-family: 'Inter', system-ui, sans-serif; padding: 8px 0;">
+
+  <!-- Top row: Client + Auth -->
+  <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+
+    <div style="background: #1a1a2e; border: 1.5px solid #4f46e5; border-radius: 12px; padding: 16px;">
+      <div style="font-size: 10px; font-weight: 700; color: #818cf8; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 8px;">React App · Firebase Hosting</div>
+      <div style="font-size: 13px; color: #e2e8f0; line-height: 1.6;">
+        <div style="margin-bottom: 4px;">📱 Mobile-first UI (your design)</div>
+        <div style="margin-bottom: 4px;">🖥 Desktop layout</div>
+        <div style="margin-bottom: 4px;">🔴 Live score listeners</div>
+        <div style="margin-bottom: 4px;">🏆 Leaderboard listeners</div>
+        <div>🛡 Admin panel</div>
+      </div>
+    </div>
+
+    <div style="background: #1a1a2e; border: 1.5px solid #f59e0b; border-radius: 12px; padding: 16px;">
+      <div style="font-size: 10px; font-weight: 700; color: #fcd34d; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 8px;">Firebase Auth</div>
+      <div style="font-size: 13px; color: #e2e8f0; line-height: 1.6;">
+        <div style="margin-bottom: 4px;">🔐 Google Sign-in</div>
+        <div style="margin-bottom: 4px;">📧 Email + password</div>
+        <div style="margin-bottom: 4px;">✉️ Invite-only access</div>
+        <div>👑 Admin custom claim</div>
+      </div>
+    </div>
+
+    <div style="background: #1a1a2e; border: 1.5px solid #10b981; border-radius: 12px; padding: 16px;">
+      <div style="font-size: 10px; font-weight: 700; color: #6ee7b7; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 8px;">Firestore (real-time DB)</div>
+      <div style="font-size: 13px; color: #e2e8f0; line-height: 1.6;">
+        <div style="margin-bottom: 4px;">⚽ /matches</div>
+        <div style="margin-bottom: 4px;">👥 /users + /picks</div>
+        <div style="margin-bottom: 4px;">🏅 /leagues + /leaderboard</div>
+        <div style="margin-bottom: 4px;">⭐ /bonusPicks</div>
+        <div>🔒 Security rules</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Arrow down -->
+  <div style="text-align: center; color: #475569; font-size: 22px; margin-bottom: 12px;">⬇ Firestore real-time listeners push updates instantly</div>
+
+  <!-- Middle row: Cloud Functions -->
+  <div style="background: #1a1a2e; border: 1.5px solid #ec4899; border-radius: 12px; padding: 16px; margin-bottom: 16px;">
+    <div style="font-size: 10px; font-weight: 700; color: #f9a8d4; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 12px;">Firebase Cloud Functions</div>
+    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;">
+
+      <div style="background: #0f172a; border-radius: 8px; padding: 12px; border: 1px solid #1e293b;">
+        <div style="font-size: 11px; font-weight: 700; color: #f9a8d4; margin-bottom: 6px;">⏰ Scheduled Poller</div>
+        <div style="font-size: 11px; color: #94a3b8; line-height: 1.5;">Every 1 min during games<br>Every 60 min otherwise<br>→ Writes to /matches</div>
+      </div>
+
+      <div style="background: #0f172a; border-radius: 8px; padding: 12px; border: 1px solid #1e293b;">
+        <div style="font-size: 11px; font-weight: 700; color: #f9a8d4; margin-bottom: 6px;">🔒 Pick Locker</div>
+        <div style="font-size: 11px; color: #94a3b8; line-height: 1.5;">Runs every 5 min<br>Locks picks 15 min before kickoff<br>→ Updates match.locked</div>
+      </div>
+
+      <div style="background: #0f172a; border-radius: 8px; padding: 12px; border: 1px solid #1e293b;">
+        <div style="font-size: 11px; font-weight: 700; color: #f9a8d4; margin-bottom: 6px;">🧮 Score Calculator</div>
+        <div style="font-size: 11px; color: #94a3b8; line-height: 1.5;">Triggered on match finish<br>Calculates pts for all picks<br>→ Updates /leaderboard</div>
+      </div>
+
+      <div style="background: #0f172a; border-radius: 8px; padding: 12px; border: 1px solid #1e293b;">
+        <div style="font-size: 11px; font-weight: 700; color: #f9a8d4; margin-bottom: 6px;">✉️ Invite Handler</div>
+        <div style="font-size: 11px; color: #94a3b8; line-height: 1.5;">Admin triggers invite<br>Sends email via SendGrid<br>→ Creates /invites doc</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Arrow down -->
+  <div style="text-align: center; color: #475569; font-size: 22px; margin-bottom: 12px;">⬇ Polls every 1 min (live) / 60 min (idle)</div>
+
+  <!-- Bottom row: External -->
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+
+    <div style="background: #1a1a2e; border: 1.5px solid #64748b; border-radius: 12px; padding: 16px;">
+      <div style="font-size: 10px; font-weight: 700; color: #94a3b8; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 8px;">api-football.com</div>
+      <div style="font-size: 13px; color: #e2e8f0; line-height: 1.6;">
+        <div style="margin-bottom: 4px;">📅 Match schedule &amp; fixtures</div>
+        <div style="margin-bottom: 4px;">🔴 Live scores &amp; status</div>
+        <div>📊 Final results + top scorers</div>
+      </div>
+    </div>
+
+    <div style="background: #1a1a2e; border: 1.5px solid #64748b; border-radius: 12px; padding: 16px;">
+      <div style="font-size: 10px; font-weight: 700; color: #94a3b8; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 8px;">SendGrid (email)</div>
+      <div style="font-size: 13px; color: #e2e8f0; line-height: 1.6;">
+        <div style="margin-bottom: 4px;">📨 User invite emails</div>
+        <div>🔑 Password reset (via Firebase)</div>
+      </div>
+    </div>
+  </div>
+
+</div>

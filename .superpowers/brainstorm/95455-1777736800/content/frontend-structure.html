@@ -1,0 +1,115 @@
+<h2>Frontend Structure</h2>
+<p class="subtitle">React + Vite · Routes, pages, and how your design maps to components</p>
+
+<div style="font-family: 'Inter', system-ui, sans-serif; padding: 8px 0;">
+
+  <!-- Route tree -->
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+
+    <div style="background: #0f172a; border: 1.5px solid #4f46e5; border-radius: 12px; padding: 16px;">
+      <div style="font-size: 10px; font-weight: 700; color: #818cf8; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 12px;">Route Tree</div>
+      <div style="font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 2;">
+        <div style="color: #475569;">/  (public)</div>
+        <div style="color: #94a3b8; padding-left: 16px;">├── <span style="color:#e2e8f0">/login</span></div>
+        <div style="color: #94a3b8; padding-left: 16px;">└── <span style="color:#e2e8f0">/invite/:token</span></div>
+        <div style="height: 8px;"></div>
+        <div style="color: #475569;">/  (protected — must be logged in + invited)</div>
+        <div style="color: #94a3b8; padding-left: 16px;">├── <span style="color:#fcd34d">/matches</span> <span style="color:#475569">(default)</span></div>
+        <div style="color: #94a3b8; padding-left: 16px;">├── <span style="color:#fcd34d">/leaderboard</span></div>
+        <div style="color: #94a3b8; padding-left: 16px;">├── <span style="color:#fcd34d">/picks</span></div>
+        <div style="color: #94a3b8; padding-left: 16px;">├── <span style="color:#fcd34d">/bonus</span></div>
+        <div style="color: #94a3b8; padding-left: 16px;">└── <span style="color:#fcd34d">/leagues</span></div>
+        <div style="height: 8px;"></div>
+        <div style="color: #475569;">/admin  (protected — isAdmin only)</div>
+        <div style="color: #94a3b8; padding-left: 16px;">├── <span style="color:#f9a8d4">/admin/users</span></div>
+        <div style="color: #94a3b8; padding-left: 16px;">├── <span style="color:#f9a8d4">/admin/points</span></div>
+        <div style="color: #94a3b8; padding-left: 16px;">├── <span style="color:#f9a8d4">/admin/scoring</span></div>
+        <div style="color: #94a3b8; padding-left: 16px;">└── <span style="color:#f9a8d4">/admin/leagues</span></div>
+      </div>
+    </div>
+
+    <div style="background: #0f172a; border: 1.5px solid #10b981; border-radius: 12px; padding: 16px;">
+      <div style="font-size: 10px; font-weight: 700; color: #6ee7b7; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 12px;">Design → Component Mapping</div>
+      <div style="display: flex; flex-direction: column; gap: 8px; font-size: 12px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; background: #1e293b; border-radius: 8px;">
+          <span style="color:#fcd34d">MatchesScreen</span>
+          <span style="color:#475569">→</span>
+          <span style="color:#e2e8f0">/matches</span>
+        </div>
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; background: #1e293b; border-radius: 8px;">
+          <span style="color:#fcd34d">LeaderboardScreen</span>
+          <span style="color:#475569">→</span>
+          <span style="color:#e2e8f0">/leaderboard</span>
+        </div>
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; background: #1e293b; border-radius: 8px;">
+          <span style="color:#fcd34d">PicksScreen</span>
+          <span style="color:#475569">→</span>
+          <span style="color:#e2e8f0">/picks</span>
+        </div>
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; background: #1e293b; border-radius: 8px;">
+          <span style="color:#fcd34d">BonusScreen</span>
+          <span style="color:#475569">→</span>
+          <span style="color:#e2e8f0">/bonus</span>
+        </div>
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; background: #1e293b; border-radius: 8px;">
+          <span style="color:#fcd34d">LeaguesScreen</span>
+          <span style="color:#475569">→</span>
+          <span style="color:#e2e8f0">/leagues</span>
+        </div>
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; background: #1e293b; border-radius: 8px;">
+          <span style="color:#f9a8d4">AdminPanel</span>
+          <span style="color:#475569">→</span>
+          <span style="color:#e2e8f0">/admin/*</span>
+        </div>
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; background: #1e293b; border-radius: 8px;">
+          <span style="color:#67e8f9">MatchesDesktop / LeaderboardDesktop</span>
+          <span style="color:#475569">→</span>
+          <span style="color:#e2e8f0">auto on wide screen</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Component tree -->
+  <div style="background: #0f172a; border: 1.5px solid #f59e0b; border-radius: 12px; padding: 16px; margin-bottom: 16px;">
+    <div style="font-size: 10px; font-weight: 700; color: #fcd34d; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 12px;">Key Shared Components (from your design files)</div>
+    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; font-size: 11px;">
+      <div style="background: #1e293b; border-radius: 8px; padding: 10px;">
+        <div style="color: #fcd34d; font-weight: 700; margin-bottom: 6px;">Primitives</div>
+        <div style="color: #94a3b8; line-height: 1.7;">RabbitMark<br>LogoLockup<br>Avatar<br>Flag<br>Trend</div>
+      </div>
+      <div style="background: #1e293b; border-radius: 8px; padding: 10px;">
+        <div style="color: #fcd34d; font-weight: 700; margin-bottom: 6px;">Layout</div>
+        <div style="color: #94a3b8; line-height: 1.7;">AppHeader<br>TabBar<br>DesktopTopNav<br>Phone (design only)</div>
+      </div>
+      <div style="background: #1e293b; border-radius: 8px; padding: 10px;">
+        <div style="color: #fcd34d; font-weight: 700; margin-bottom: 6px;">Match</div>
+        <div style="color: #94a3b8; line-height: 1.7;">MatchCard<br>ScorePicker<br>ScoringLegend<br>LiveBadge</div>
+      </div>
+      <div style="background: #1e293b; border-radius: 8px; padding: 10px;">
+        <div style="color: #fcd34d; font-weight: 700; margin-bottom: 6px;">Feedback</div>
+        <div style="color: #94a3b8; line-height: 1.7;">Toast<br>RabbitLoader<br>EmptyState<br>StatCard</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- State management -->
+  <div style="background: #0f172a; border: 1.5px solid #8b5cf6; border-radius: 12px; padding: 16px;">
+    <div style="font-size: 10px; font-weight: 700; color: #c4b5fd; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 12px;">State Management · React Context + Firestore hooks</div>
+    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; font-size: 11px;">
+      <div style="background: #1e293b; border-radius: 8px; padding: 12px;">
+        <div style="color: #c4b5fd; font-weight: 700; margin-bottom: 6px;">AuthContext</div>
+        <div style="color: #94a3b8; line-height: 1.7;">Current user<br>isAdmin flag<br>Sign in / out</div>
+      </div>
+      <div style="background: #1e293b; border-radius: 8px; padding: 12px;">
+        <div style="color: #c4b5fd; font-weight: 700; margin-bottom: 6px;">useMatches()</div>
+        <div style="color: #94a3b8; line-height: 1.7;">Real-time Firestore listener<br>All matches, grouped by date<br>Auto-updates on score change</div>
+      </div>
+      <div style="background: #1e293b; border-radius: 8px; padding: 12px;">
+        <div style="color: #c4b5fd; font-weight: 700; margin-bottom: 6px;">useLeaderboard(leagueId)</div>
+        <div style="color: #94a3b8; line-height: 1.7;">Real-time listener per league<br>Switches on league change<br>Rank + points + trend</div>
+      </div>
+    </div>
+  </div>
+
+</div>
