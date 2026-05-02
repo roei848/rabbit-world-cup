@@ -33,14 +33,66 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.onUserCreated = exports.inviteUser = void 0;
+exports.seedTournament = exports.lockPicks = exports.pollFootballAPI = exports.onUserCreated = exports.inviteUser = void 0;
 const app_1 = require("firebase-admin/app");
 const firestore_1 = require("firebase-admin/firestore");
 const https_1 = require("firebase-functions/v2/https");
+const scheduler_1 = require("firebase-functions/v2/scheduler");
 const identity_1 = require("firebase-functions/v2/identity");
 const crypto = __importStar(require("crypto"));
 (0, app_1.initializeApp)();
 const db = (0, firestore_1.getFirestore)();
+// ── Helpers ───────────────────────────────────────────────────
+function mapStatus(short) {
+    if (['1H', 'HT', '2H', 'ET', 'BT', 'P'].includes(short))
+        return 'live';
+    if (['FT', 'AET', 'PEN'].includes(short))
+        return 'finished';
+    return 'upcoming';
+}
+function mapRound(round) {
+    const r = round.toLowerCase();
+    if (r.includes('group'))
+        return 'group';
+    if (r.includes('round of 16'))
+        return 'r16';
+    if (r.includes('quarter'))
+        return 'qf';
+    if (r.includes('semi'))
+        return 'sf';
+    if (r.includes('final') && !r.includes('semi') && !r.includes('quarter'))
+        return 'final';
+    return 'group';
+}
+async function fetchFixtures(path) {
+    const apiKey = process.env['API_FOOTBALL_KEY'] ?? '';
+    const url = `https://v3.football.api-sports.io${path}`;
+    const res = await fetch(url, {
+        headers: { 'x-apisports-key': apiKey },
+    });
+    if (!res.ok) {
+        throw new Error(`api-football request failed: ${res.status} ${res.statusText}`);
+    }
+    const data = (await res.json());
+    return data.response;
+}
+async function getSeasonId() {
+    try {
+        const snap = await db.doc('/settings/system').get();
+        if (snap.exists) {
+            const d = snap.data();
+            const val = d['apiFootballSeasonId'];
+            if (typeof val === 'number')
+                return val;
+            if (typeof val === 'string')
+                return parseInt(val, 10) || 2026;
+        }
+    }
+    catch {
+        // fall through
+    }
+    return 2026;
+}
 // ── inviteUser ────────────────────────────────────────────────
 // Callable: admin sends an invite link for a given email.
 // Requires caller to have isAdmin custom claim.
@@ -138,5 +190,180 @@ exports.onUserCreated = (0, identity_1.beforeUserCreated)(async (event) => {
         when: firestore_1.FieldValue.serverTimestamp(),
     });
     await batch.commit();
+});
+// ── pollFootballAPI ───────────────────────────────────────────
+// Scheduled every 1 minute. Fetches live scores from api-football.com
+// and upserts existing /matches docs. Uses smart-skip to avoid
+// unnecessary API calls when no live/imminent matches are present.
+exports.pollFootballAPI = (0, scheduler_1.onSchedule)('every 1 minutes', async () => {
+    const apiKey = process.env['API_FOOTBALL_KEY'] ?? '';
+    if (!apiKey) {
+        console.warn('pollFootballAPI: API_FOOTBALL_KEY is not set — skipping');
+        return;
+    }
+    const now = new Date();
+    const imminentCutoff = new Date(now.getTime() + 15 * 60 * 1000); // now + 15 min
+    // Query for live matches or matches kicking off within 15 minutes
+    const [liveSnap, imminentSnap] = await Promise.all([
+        db.collection('matches').where('status', '==', 'live').limit(1).get(),
+        db
+            .collection('matches')
+            .where('kickoff', '>=', firestore_1.Timestamp.fromDate(now))
+            .where('kickoff', '<=', firestore_1.Timestamp.fromDate(imminentCutoff))
+            .limit(1)
+            .get(),
+    ]);
+    const hasLiveOrImminent = !liveSnap.empty || !imminentSnap.empty;
+    if (!hasLiveOrImminent) {
+        // Check lastFullSync — if >60 min ago (or never), do a full sync of today's matches
+        const settingsSnap = await db.doc('/settings/system').get();
+        const settings = settingsSnap.exists
+            ? settingsSnap.data()
+            : {};
+        const lastFullSync = settings['lastFullSync'];
+        let shouldFullSync = true;
+        if (lastFullSync instanceof firestore_1.Timestamp) {
+            const minutesSince = (now.getTime() - lastFullSync.toDate().getTime()) / 60000;
+            if (minutesSince < 60)
+                shouldFullSync = false;
+        }
+        if (!shouldFullSync) {
+            console.log('pollFootballAPI: no live/imminent matches and last full sync was recent — skipping');
+            return;
+        }
+        // Full sync of today's matches
+        const dateStr = now.toISOString().split('T')[0];
+        const seasonId = await getSeasonId();
+        console.log(`pollFootballAPI: full sync for ${dateStr}, season ${seasonId}`);
+        const fixtures = await fetchFixtures(`/fixtures?season=${seasonId}&league=1&date=${dateStr}`);
+        await upsertFixtures(fixtures);
+        await db.doc('/settings/system').set({ lastFullSync: firestore_1.FieldValue.serverTimestamp() }, { merge: true });
+        console.log(`pollFootballAPI: full sync complete — ${fixtures.length} fixture(s) processed`);
+        return;
+    }
+    // Fetch all live matches to get their IDs, then fetch from API
+    const liveMatchesSnap = await db.collection('matches').where('status', '==', 'live').get();
+    const imminentMatchesSnap = await db
+        .collection('matches')
+        .where('kickoff', '>=', firestore_1.Timestamp.fromDate(now))
+        .where('kickoff', '<=', firestore_1.Timestamp.fromDate(imminentCutoff))
+        .get();
+    const apiIds = new Set();
+    for (const doc of [...liveMatchesSnap.docs, ...imminentMatchesSnap.docs]) {
+        const d = doc.data();
+        if (typeof d['apiId'] === 'number')
+            apiIds.add(d['apiId']);
+    }
+    if (apiIds.size === 0) {
+        console.log('pollFootballAPI: no apiIds found for live/imminent matches — skipping');
+        return;
+    }
+    const idsParam = Array.from(apiIds).join('-');
+    console.log(`pollFootballAPI: fetching ${apiIds.size} fixture(s): ${idsParam}`);
+    const fixtures = await fetchFixtures(`/fixtures?ids=${idsParam}`);
+    await upsertFixtures(fixtures);
+    console.log(`pollFootballAPI: upserted ${fixtures.length} fixture(s)`);
+});
+async function upsertFixtures(fixtures) {
+    for (const f of fixtures) {
+        const matchId = String(f.fixture.id);
+        const status = mapStatus(f.fixture.status.short);
+        const score = status === 'live' || status === 'finished'
+            ? { home: f.goals.home ?? 0, away: f.goals.away ?? 0 }
+            : null;
+        const liveMinute = f.fixture.status.elapsed ?? null;
+        const ref = db.collection('matches').doc(matchId);
+        try {
+            await ref.update({
+                status,
+                score,
+                liveMinute,
+            });
+        }
+        catch (err) {
+            // Doc doesn't exist yet — skip (seeding's job)
+            console.log(`pollFootballAPI: skipping match ${matchId} — doc not found`);
+        }
+    }
+}
+// ── lockPicks ─────────────────────────────────────────────────
+// Scheduled every 5 minutes. Finds matches whose lockAt time has
+// passed but are not yet marked as locked, and batch-updates them.
+exports.lockPicks = (0, scheduler_1.onSchedule)('every 5 minutes', async () => {
+    const now = firestore_1.Timestamp.now();
+    const snap = await db
+        .collection('matches')
+        .where('lockAt', '<=', now)
+        .where('locked', '==', false)
+        .get();
+    if (snap.empty) {
+        console.log('lockPicks: no matches to lock');
+        return;
+    }
+    // Firestore batch max is 500; chunk if necessary
+    const docs = snap.docs;
+    const BATCH_LIMIT = 500;
+    let totalLocked = 0;
+    for (let i = 0; i < docs.length; i += BATCH_LIMIT) {
+        const chunk = docs.slice(i, i + BATCH_LIMIT);
+        const batch = db.batch();
+        for (const doc of chunk) {
+            batch.update(doc.ref, { locked: true });
+        }
+        await batch.commit();
+        totalLocked += chunk.length;
+    }
+    console.log(`lockPicks: locked ${totalLocked} match(es)`);
+});
+// ── seedTournament ────────────────────────────────────────────
+// HTTPS callable (admin only). Fetches all WC 2026 fixtures from
+// api-football.com and seeds /matches in Firestore.
+exports.seedTournament = (0, https_1.onCall)(async (request) => {
+    // Verify admin
+    const uid = request.auth?.uid;
+    if (!uid)
+        throw new https_1.HttpsError('unauthenticated', 'Must be signed in');
+    const callerClaims = request.auth?.token;
+    if (!callerClaims?.['isAdmin'])
+        throw new https_1.HttpsError('permission-denied', 'Admins only');
+    const apiKey = process.env['API_FOOTBALL_KEY'] ?? '';
+    if (!apiKey) {
+        throw new https_1.HttpsError('failed-precondition', 'API_FOOTBALL_KEY not configured');
+    }
+    const seasonId = await getSeasonId();
+    console.log(`seedTournament: fetching WC fixtures for season ${seasonId}`);
+    const fixtures = await fetchFixtures(`/fixtures?season=${seasonId}&league=1`);
+    console.log(`seedTournament: received ${fixtures.length} fixture(s) from api-football`);
+    const BATCH_LIMIT = 500;
+    let seeded = 0;
+    for (let i = 0; i < fixtures.length; i += BATCH_LIMIT) {
+        const chunk = fixtures.slice(i, i + BATCH_LIMIT);
+        const batch = db.batch();
+        for (const f of chunk) {
+            const matchId = String(f.fixture.id);
+            const kickoffDate = new Date(f.fixture.date);
+            const lockAtDate = new Date(kickoffDate.getTime() - 15 * 60 * 1000);
+            const homeCode = f.teams.home.code ?? f.teams.home.name.slice(0, 3).toUpperCase();
+            const awayCode = f.teams.away.code ?? f.teams.away.name.slice(0, 3).toUpperCase();
+            const ref = db.collection('matches').doc(matchId);
+            batch.set(ref, {
+                apiId: f.fixture.id,
+                homeTeam: { code: homeCode, name: f.teams.home.name },
+                awayTeam: { code: awayCode, name: f.teams.away.name },
+                kickoff: firestore_1.Timestamp.fromDate(kickoffDate),
+                lockAt: firestore_1.Timestamp.fromDate(lockAtDate),
+                stage: mapRound(f.league.round),
+                stageLabel: f.league.round,
+                status: mapStatus(f.fixture.status.short),
+                score: null,
+                liveMinute: null,
+                locked: false,
+            }, { merge: true });
+        }
+        await batch.commit();
+        seeded += chunk.length;
+    }
+    console.log(`seedTournament: seeded ${seeded} fixture(s)`);
+    return { seeded };
 });
 //# sourceMappingURL=index.js.map
