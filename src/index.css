@@ -20,3 +20,7 @@ body {
 .br-pulse {
   animation: br-pulse 1.4s infinite;
 }
+
+@keyframes br-spin {
+  to { transform: rotate(360deg); }
+}
