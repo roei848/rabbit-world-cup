@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useTheme } from '../../theme/ThemeProvider';
 import { FONTS } from '../../theme/tokens';
 import { useAuth } from '../../contexts/AuthContext';
@@ -41,6 +41,20 @@ function getTodayKey(): string {
   return new Date().toLocaleDateString('en-CA');
 }
 
+// ── Resize-aware width hook ───────────────────────────────────
+
+function useIsWide(): boolean {
+  const [wide, setWide] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth >= 900 : false
+  );
+  useEffect(() => {
+    const handler = () => setWide(window.innerWidth >= 900);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
+  return wide;
+}
+
 // ── Page component ─────────────────────────────────────────────
 
 export function Matches() {
@@ -53,8 +67,7 @@ export function Matches() {
   // Ref map: dateKey → DOM element for "Jump to today"
   const dateRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
-  const todayKey      = getTodayKey();
-  const hasTodayDates = todayKey in matchesByDate;
+  const todayKey = getTodayKey();
 
   const jumpToToday = useCallback(() => {
     const el = dateRefs.current[todayKey];
@@ -71,8 +84,9 @@ export function Matches() {
     if (filtered.length > 0) filteredByDate[dateKey] = filtered;
   }
 
+  const hasTodayDates = todayKey in filteredByDate;
   const dateKeys = Object.keys(filteredByDate);
-  const isWide   = typeof window !== 'undefined' && window.innerWidth >= 900;
+  const isWide = useIsWide();
 
   // ── Render ───────────────────────────────────────────────────
 
