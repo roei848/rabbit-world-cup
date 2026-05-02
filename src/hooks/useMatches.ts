@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { onSnapshot, query, orderBy } from 'firebase/firestore';
 import { matchesCol, type MatchDoc } from '../firebase/firestore';
-import { db } from '../firebase/client';
 
 export interface UseMatchesResult {
   matchesByDate: Record<string, MatchDoc[]>;
@@ -15,14 +14,6 @@ export function useMatches(): UseMatchesResult {
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
-    // Handle Firebase not configured
-    if (db === null) {
-      setMatchesByDate({});
-      setLoading(false);
-      setError(null);
-      return;
-    }
-
     setLoading(true);
     setError(null);
 
@@ -36,8 +27,7 @@ export function useMatches(): UseMatchesResult {
 
           snapshot.docs.forEach((doc) => {
             const match = doc.data();
-            const date = match.kickoff.toDate();
-            const dateKey = date.toISOString().split('T')[0]; // Format as YYYY-MM-DD
+            const dateKey = match.kickoff.toDate().toLocaleDateString('en-CA'); // Format as YYYY-MM-DD in local time
 
             if (!grouped[dateKey]) {
               grouped[dateKey] = [];
