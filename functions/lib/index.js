@@ -62,6 +62,7 @@ function mapRound(round) {
         return 'sf';
     if (r.includes('final') && !r.includes('semi') && !r.includes('quarter'))
         return 'final';
+    console.warn(`mapRound: unrecognised round "${round}" — defaulting to 'group'`);
     return 'group';
 }
 async function fetchFixtures(path) {
@@ -69,11 +70,15 @@ async function fetchFixtures(path) {
     const url = `https://v3.football.api-sports.io${path}`;
     const res = await fetch(url, {
         headers: { 'x-apisports-key': apiKey },
+        signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) {
         throw new Error(`api-football request failed: ${res.status} ${res.statusText}`);
     }
     const data = (await res.json());
+    if (!Array.isArray(data.response)) {
+        throw new Error(`api-football: unexpected response — 'response' is not an array`);
+    }
     return data.response;
 }
 async function getSeasonId() {
@@ -203,14 +208,13 @@ exports.pollFootballAPI = (0, scheduler_1.onSchedule)('every 1 minutes', async (
     }
     const now = new Date();
     const imminentCutoff = new Date(now.getTime() + 15 * 60 * 1000); // now + 15 min
-    // Query for live matches or matches kicking off within 15 minutes
+    // Run full queries upfront to avoid double-querying
     const [liveSnap, imminentSnap] = await Promise.all([
-        db.collection('matches').where('status', '==', 'live').limit(1).get(),
+        db.collection('matches').where('status', '==', 'live').get(),
         db
             .collection('matches')
             .where('kickoff', '>=', firestore_1.Timestamp.fromDate(now))
             .where('kickoff', '<=', firestore_1.Timestamp.fromDate(imminentCutoff))
-            .limit(1)
             .get(),
     ]);
     const hasLiveOrImminent = !liveSnap.empty || !imminentSnap.empty;
@@ -241,15 +245,9 @@ exports.pollFootballAPI = (0, scheduler_1.onSchedule)('every 1 minutes', async (
         console.log(`pollFootballAPI: full sync complete — ${fixtures.length} fixture(s) processed`);
         return;
     }
-    // Fetch all live matches to get their IDs, then fetch from API
-    const liveMatchesSnap = await db.collection('matches').where('status', '==', 'live').get();
-    const imminentMatchesSnap = await db
-        .collection('matches')
-        .where('kickoff', '>=', firestore_1.Timestamp.fromDate(now))
-        .where('kickoff', '<=', firestore_1.Timestamp.fromDate(imminentCutoff))
-        .get();
+    // Reuse snapshots from earlier queries to extract apiIds
     const apiIds = new Set();
-    for (const doc of [...liveMatchesSnap.docs, ...imminentMatchesSnap.docs]) {
+    for (const doc of [...liveSnap.docs, ...imminentSnap.docs]) {
         const d = doc.data();
         if (typeof d['apiId'] === 'number')
             apiIds.add(d['apiId']);
@@ -281,8 +279,13 @@ async function upsertFixtures(fixtures) {
             });
         }
         catch (err) {
-            // Doc doesn't exist yet — skip (seeding's job)
-            console.log(`pollFootballAPI: skipping match ${matchId} — doc not found`);
+            const code = err.code;
+            if (code === 5) {
+                console.log(`upsertFixtures: doc ${matchId} not found — skipping`);
+            }
+            else {
+                console.error(`upsertFixtures: failed to update doc ${matchId}:`, err);
+            }
         }
     }
 }

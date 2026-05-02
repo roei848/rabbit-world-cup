@@ -11,6 +11,7 @@ import { Leaderboard } from './pages/app/Leaderboard';
 import { Picks } from './pages/app/Picks';
 import { Bonus } from './pages/app/Bonus';
 import { Leagues } from './pages/app/Leagues';
+import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { AdminUsers } from './pages/admin/AdminUsers';
 import { AdminScoring } from './pages/admin/AdminScoring';
 import { AdminLeagues } from './pages/admin/AdminLeagues';
@@ -101,6 +102,7 @@ function AppRoutes() {
       <Route path="/leagues" element={<ProtectedRoute><Leagues /></ProtectedRoute>} />
 
       {/* Admin only */}
+      <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
       <Route path="/admin/users"   element={<AdminRoute><AdminUsers /></AdminRoute>} />
       <Route path="/admin/scoring" element={<AdminRoute><AdminScoring /></AdminRoute>} />
       <Route path="/admin/leagues" element={<AdminRoute><AdminLeagues /></AdminRoute>} />
