@@ -5,9 +5,10 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { type User, getIdTokenResult } from 'firebase/auth';
+import { type User } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
 import { onAuth } from '../firebase/auth';
-import { isConfigured } from '../firebase/client';
+import { isConfigured, db } from '../firebase/client';
 import { FONTS } from '../theme/tokens';
 
 interface AuthContextValue {
@@ -32,9 +33,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // Read isAdmin from custom claims (set manually for first admin via Firebase console)
-      const tokenResult = await getIdTokenResult(firebaseUser, false);
-      const admin = tokenResult.claims['isAdmin'] === true;
+      // Read isAdmin from Firestore users/{uid} doc (set manually in Firebase console)
+      let admin = false;
+      try {
+        if (db) {
+          const snap = await getDoc(doc(db, 'users', firebaseUser.uid));
+          if (snap.exists()) {
+            admin = snap.data()['isAdmin'] === true;
+          }
+        }
+      } catch {
+        // Firestore unavailable — default to false
+      }
 
       setUser(firebaseUser);
       setIsAdmin(admin);
