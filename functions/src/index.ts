@@ -87,6 +87,13 @@ async function fetchFixtures(path: string): Promise<ApiFixture[]> {
   return data.response;
 }
 
+async function assertAdmin(uid: string): Promise<void> {
+  const snap = await db.collection('users').doc(uid).get();
+  if (!snap.exists || snap.data()?.['isAdmin'] !== true) {
+    throw new HttpsError('permission-denied', 'Admins only');
+  }
+}
+
 async function getSeasonId(): Promise<number> {
   try {
     const snap = await db.doc('/settings/system').get();
@@ -106,12 +113,9 @@ async function getSeasonId(): Promise<number> {
 // Callable: admin sends an invite link for a given email.
 // Requires caller to have isAdmin custom claim.
 export const inviteUser = onCall({ invoker: 'public' }, async (request) => {
-  // Verify admin via custom claims (set via Firebase Auth console or admin SDK)
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Must be signed in');
-
-  const callerClaims = request.auth?.token;
-  if (!callerClaims?.['isAdmin']) throw new HttpsError('permission-denied', 'Admins only');
+  await assertAdmin(uid);
 
   const { email, leagueId } = request.data as { email: string; leagueId?: string };
   if (!email) throw new HttpsError('invalid-argument', 'email is required');
@@ -369,12 +373,9 @@ export const lockPicks = onSchedule('every 5 minutes', async () => {
 // HTTPS callable (admin only). Fetches all WC 2026 fixtures from
 // api-football.com and seeds /matches in Firestore.
 export const seedTournament = onCall({ invoker: 'public' }, async (request) => {
-  // Verify admin
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Must be signed in');
-
-  const callerClaims = request.auth?.token;
-  if (!callerClaims?.['isAdmin']) throw new HttpsError('permission-denied', 'Admins only');
+  await assertAdmin(uid);
 
   const apiKey = process.env['API_FOOTBALL_KEY'] ?? '';
   if (!apiKey) {

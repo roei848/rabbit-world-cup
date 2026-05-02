@@ -81,6 +81,12 @@ async function fetchFixtures(path) {
     }
     return data.response;
 }
+async function assertAdmin(uid) {
+    const snap = await db.collection('users').doc(uid).get();
+    if (!snap.exists || snap.data()?.['isAdmin'] !== true) {
+        throw new https_1.HttpsError('permission-denied', 'Admins only');
+    }
+}
 async function getSeasonId() {
     try {
         const snap = await db.doc('/settings/system').get();
@@ -102,13 +108,10 @@ async function getSeasonId() {
 // Callable: admin sends an invite link for a given email.
 // Requires caller to have isAdmin custom claim.
 exports.inviteUser = (0, https_1.onCall)({ invoker: 'public' }, async (request) => {
-    // Verify admin via custom claims (set via Firebase Auth console or admin SDK)
     const uid = request.auth?.uid;
     if (!uid)
         throw new https_1.HttpsError('unauthenticated', 'Must be signed in');
-    const callerClaims = request.auth?.token;
-    if (!callerClaims?.['isAdmin'])
-        throw new https_1.HttpsError('permission-denied', 'Admins only');
+    await assertAdmin(uid);
     const { email, leagueId } = request.data;
     if (!email)
         throw new https_1.HttpsError('invalid-argument', 'email is required');
@@ -322,13 +325,10 @@ exports.lockPicks = (0, scheduler_1.onSchedule)('every 5 minutes', async () => {
 // HTTPS callable (admin only). Fetches all WC 2026 fixtures from
 // api-football.com and seeds /matches in Firestore.
 exports.seedTournament = (0, https_1.onCall)({ invoker: 'public' }, async (request) => {
-    // Verify admin
     const uid = request.auth?.uid;
     if (!uid)
         throw new https_1.HttpsError('unauthenticated', 'Must be signed in');
-    const callerClaims = request.auth?.token;
-    if (!callerClaims?.['isAdmin'])
-        throw new https_1.HttpsError('permission-denied', 'Admins only');
+    await assertAdmin(uid);
     const apiKey = process.env['API_FOOTBALL_KEY'] ?? '';
     if (!apiKey) {
         throw new https_1.HttpsError('failed-precondition', 'API_FOOTBALL_KEY not configured');
