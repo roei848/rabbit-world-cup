@@ -73,6 +73,12 @@ export interface LeaderboardEntry {
   lastUpdated?: Timestamp;
 }
 
+export interface BonusPickDoc {
+  userId: string;
+  topScorer: { playerId: string; playerName: string; submittedAt: Timestamp } | null;
+  worldCupWinner: { teamCode: string; submittedAt: Timestamp } | null;
+}
+
 // ── Converters ───────────────────────────────────────────────
 
 function makeConverter<T extends object>(): FirestoreDataConverter<T> {
@@ -88,6 +94,7 @@ export const inviteConverter          = makeConverter<InviteDoc>();
 export const matchConverter           = makeConverter<MatchDoc>();
 export const pickConverter            = makeConverter<PickDoc>();
 export const leaderboardEntryConverter = makeConverter<LeaderboardEntry>();
+export const bonusPickConverter        = makeConverter<BonusPickDoc>();
 
 // ── Collection refs ──────────────────────────────────────────
 
@@ -104,6 +111,9 @@ export function picksCol(uid: string) {
 }
 export function leaderboardEntriesCol(leagueId: string) {
   return collection(requireDb(), 'leaderboard', leagueId, 'entries').withConverter(leaderboardEntryConverter);
+}
+export function bonusPickDoc(uid: string) {
+  return doc(requireDb(), 'bonusPicks', uid).withConverter(bonusPickConverter);
 }
 
 // ── Helpers ──────────────────────────────────────────────────
