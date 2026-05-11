@@ -1,9 +1,8 @@
 import { useTheme } from '../../theme/ThemeProvider';
 import { FONTS } from '../../theme/tokens';
-import type { MatchDoc, PickDoc } from '../../firebase/firestore';
+import type { PickDoc } from '../../firebase/firestore';
 
 interface FinishedBreakdownProps {
-  match: MatchDoc;
   pick: PickDoc | null;
 }
 

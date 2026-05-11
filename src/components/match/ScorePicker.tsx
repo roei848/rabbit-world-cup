@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useTheme } from '../../theme/ThemeProvider';
 import { FONTS } from '../../theme/tokens';
 import type { MatchDoc, PickDoc } from '../../firebase/firestore';
@@ -18,6 +18,12 @@ export function ScorePicker({ match, pick, onSave }: ScorePickerProps) {
   const [away, setAway] = useState<number>(pick?.awayGoals ?? 0);
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [errorMsg, setErrorMsg] = useState<string>('');
+
+  // Sync state when pick prop changes (e.g., from useUserPicks snapshot)
+  useEffect(() => {
+    setHome(pick?.homeGoals ?? 0);
+    setAway(pick?.awayGoals ?? 0);
+  }, [pick?.homeGoals, pick?.awayGoals]);
 
   // Caller should not render this at all for locked matches, but guard anyway
   if (match.locked) return null;

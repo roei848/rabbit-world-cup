@@ -348,9 +348,9 @@ export function Matches() {
                   gap:           8,
                 }}
               >
-                {filteredByDate[dateKey].map((m, i) => (
+                {filteredByDate[dateKey].map((m) => (
                   <MatchCard
-                    key={`${m.apiId}-${i}`}
+                    key={String(m.apiId)}
                     match={m}
                     pick={picks[String(m.apiId)] ?? null}
                   />

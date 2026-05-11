@@ -45,9 +45,6 @@ export function MatchCard({ match, pick }: MatchCardProps) {
         homeGoals: home,
         awayGoals: away,
         submittedAt: serverTimestamp(),
-        lockedAt: null,
-        points: null,
-        pointsBreakdown: null,
       },
       { merge: true }
     );
@@ -152,7 +149,7 @@ export function MatchCard({ match, pick }: MatchCardProps) {
 
       {/* finished — scoring breakdown with user's pick */}
       {match.status === 'finished' && (
-        <FinishedBreakdown match={match} pick={pick} />
+        <FinishedBreakdown pick={pick} />
       )}
 
       {/* live — show user's pick read-only + locked indicator */}
