@@ -17,6 +17,22 @@ interface ApiFixtureStatus {
   elapsed: number | null;
 }
 
+interface WCPlayer {
+  id: number;
+  name: string;
+  teamCode: string;
+}
+
+interface ApiPlayerItem {
+  player: { id: number; name: string };
+  statistics: Array<{ team: { id: number; code: string; name: string } }>;
+}
+
+interface ApiPlayersResponse {
+  response: ApiPlayerItem[];
+  paging: { current: number; total: number };
+}
+
 interface ApiFixtureInfo {
   id: number;
   date: string;
@@ -608,4 +624,53 @@ export const calculatePoints = onDocumentUpdated('matches/{matchId}', async (eve
   );
 
   console.log(`calculatePoints: done — ${affectedUids.size} user(s), ${affectedLeagueIds.size} league(s)`);
+});
+
+// ── cacheWCPlayers ────────────────────────────────────────────
+// HTTPS callable (admin only). Fetches all WC 2026 players from
+// api-football.com (paginated) and caches them in /cache/wcPlayers.
+export const cacheWCPlayers = onCall({ invoker: 'public' }, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Must be signed in');
+  await assertAdmin(uid);
+
+  const apiKey = process.env['API_FOOTBALL_KEY'] ?? '';
+  if (!apiKey) throw new HttpsError('failed-precondition', 'API_FOOTBALL_KEY not configured');
+
+  const seasonId = await getSeasonId();
+
+  const allPlayers: WCPlayer[] = [];
+  let page = 1;
+  let totalPages = 1;
+
+  do {
+    const url = `https://v3.football.api-sports.io/players?league=1&season=${seasonId}&page=${page}`;
+    const res = await fetch(url, {
+      headers: { 'x-apisports-key': apiKey },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) throw new HttpsError('internal', `api-football failed: ${res.status}`);
+
+    const data = await res.json() as ApiPlayersResponse;
+    totalPages = data.paging?.total ?? 1;
+
+    for (const item of data.response ?? []) {
+      const teamCode = item.statistics?.[0]?.team?.code ?? '';
+      allPlayers.push({
+        id: item.player.id,
+        name: item.player.name,
+        teamCode,
+      });
+    }
+    page++;
+  } while (page <= totalPages);
+
+  await db.doc('/cache/wcPlayers').set({
+    players: allPlayers,
+    cachedAt: FieldValue.serverTimestamp(),
+    season: seasonId,
+  });
+
+  console.log(`cacheWCPlayers: cached ${allPlayers.length} players for season ${seasonId}`);
+  return { count: allPlayers.length };
 });
