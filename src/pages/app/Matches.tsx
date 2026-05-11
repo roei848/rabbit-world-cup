@@ -3,6 +3,7 @@ import { useTheme } from '../../theme/ThemeProvider';
 import { FONTS } from '../../theme/tokens';
 import { useAuth } from '../../contexts/AuthContext';
 import { useMatches } from '../../hooks/useMatches';
+import { useUserPicks } from '../../hooks/useUserPicks';
 import { MatchCard } from '../../components/match';
 import { LogoLockup, Avatar } from '../../components/primitives';
 import type { MatchDoc } from '../../firebase/firestore';
@@ -61,6 +62,7 @@ export function Matches() {
   const { theme: t }  = useTheme();
   const { user }      = useAuth();
   const { matchesByDate, loading, error } = useMatches();
+  const { picks } = useUserPicks();
 
   const [stageFilter, setStageFilter] = useState<StageFilter>('all');
 
@@ -347,7 +349,11 @@ export function Matches() {
                 }}
               >
                 {filteredByDate[dateKey].map((m, i) => (
-                  <MatchCard key={`${m.apiId}-${i}`} match={m} />
+                  <MatchCard
+                    key={`${m.apiId}-${i}`}
+                    match={m}
+                    pick={picks[String(m.apiId)] ?? null}
+                  />
                 ))}
               </div>
             </div>

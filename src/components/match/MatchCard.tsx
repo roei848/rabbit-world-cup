@@ -1,10 +1,14 @@
 import { useTheme } from '../../theme/ThemeProvider';
 import { FONTS } from '../../theme/tokens';
 import { Flag } from '../primitives/Flag';
-import type { MatchDoc } from '../../firebase/firestore';
+import type { MatchDoc, PickDoc } from '../../firebase/firestore';
+import { picksCol } from '../../firebase/firestore';
+import { setDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { MatchCenter } from './MatchCenter';
 import { MatchStatePill } from './MatchStatePill';
 import { FinishedBreakdown } from './FinishedBreakdown';
+import { ScorePicker } from './ScorePicker';
+import { useAuth } from '../../contexts/AuthContext';
 
 const STAGE_MULT: Record<MatchDoc['stage'], number> = {
   group: 1,
@@ -16,15 +20,38 @@ const STAGE_MULT: Record<MatchDoc['stage'], number> = {
 
 interface MatchCardProps {
   match: MatchDoc;
+  pick: PickDoc | null;
 }
 
-export function MatchCard({ match }: MatchCardProps) {
+export function MatchCard({ match, pick }: MatchCardProps) {
   const { theme: t } = useTheme();
+  const { user } = useAuth();
   const mult = STAGE_MULT[match.stage];
 
   const kickoffTime = match.kickoff
     .toDate()
     .toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+
+  const matchId = String(match.apiId);
+
+  async function handleSavePick(home: number, away: number): Promise<void> {
+    if (!user) throw new Error('Not signed in');
+    const ref = doc(picksCol(user.uid), matchId);
+    await setDoc(
+      ref,
+      {
+        userId: user.uid,
+        matchId,
+        homeGoals: home,
+        awayGoals: away,
+        submittedAt: serverTimestamp(),
+        lockedAt: null,
+        points: null,
+        pointsBreakdown: null,
+      },
+      { merge: true }
+    );
+  }
 
   return (
     <div
@@ -121,10 +148,14 @@ export function MatchCard({ match }: MatchCardProps) {
         </div>
       </div>
 
-      {/* finished — scoring breakdown (Phase 4: pass pick when available) */}
-      {match.status === 'finished' && <FinishedBreakdown match={match} />}
+      {/* ── Status-specific bottom section ── */}
 
-      {/* live — locked indicator */}
+      {/* finished — scoring breakdown with user's pick */}
+      {match.status === 'finished' && (
+        <FinishedBreakdown match={match} pick={pick} />
+      )}
+
+      {/* live — show user's pick read-only + locked indicator */}
       {match.status === 'live' && (
         <div
           style={{
@@ -133,13 +164,22 @@ export function MatchCard({ match }: MatchCardProps) {
             borderTop: `1px dashed ${t.border}`,
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'flex-end',
+            justifyContent: 'space-between',
             fontFamily: FONTS.body,
             fontSize: 11,
-            color: t.live,
           }}
         >
-          <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          {pick !== null ? (
+            <span style={{ color: t.inkMuted }}>
+              Your pick:{' '}
+              <span style={{ color: t.ink, fontWeight: 600 }}>
+                {pick.homeGoals} – {pick.awayGoals}
+              </span>
+            </span>
+          ) : (
+            <span style={{ color: t.inkDim }}>No pick submitted</span>
+          )}
+          <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: t.live }}>
             <span
               style={{
                 width: 6,
@@ -154,8 +194,8 @@ export function MatchCard({ match }: MatchCardProps) {
         </div>
       )}
 
-      {/* upcoming — kickoff info */}
-      {match.status === 'upcoming' && (
+      {/* upcoming + locked — show user's pick read-only */}
+      {match.status === 'upcoming' && match.locked && (
         <div
           style={{
             marginTop: 8,
@@ -168,7 +208,20 @@ export function MatchCard({ match }: MatchCardProps) {
           }}
         >
           <span>Locks at kickoff · {kickoffTime}</span>
+          {pick !== null && (
+            <span style={{ color: t.inkMuted }}>
+              Your pick:{' '}
+              <span style={{ color: t.ink, fontWeight: 600 }}>
+                {pick.homeGoals} – {pick.awayGoals}
+              </span>
+            </span>
+          )}
         </div>
+      )}
+
+      {/* upcoming + not locked — score picker */}
+      {match.status === 'upcoming' && !match.locked && (
+        <ScorePicker match={match} pick={pick} onSave={handleSavePick} />
       )}
     </div>
   );
