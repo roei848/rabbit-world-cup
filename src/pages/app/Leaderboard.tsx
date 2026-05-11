@@ -246,13 +246,17 @@ export function Leaderboard() {
 
   // Load user's league memberships
   const [leagueIds, setLeagueIds] = useState<string[]>([]);
+  const [leagueIdsLoading, setLeagueIdsLoading] = useState(!!user);
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
-    getUserDoc(user.uid).then(docData => {
-      if (cancelled) return;
-      setLeagueIds(docData?.leagueIds ?? []);
-    }).catch(() => {});
+    getUserDoc(user.uid)
+      .then(docData => {
+        if (cancelled) return;
+        setLeagueIds(docData?.leagueIds ?? []);
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLeagueIdsLoading(false); });
     return () => { cancelled = true; };
   }, [user?.uid]);
 
@@ -366,7 +370,7 @@ export function Leaderboard() {
             <span style={{ color: t.inkMuted, fontWeight: 500 }}>▾</span>
           </button>
 
-          {pickerOpen && (
+          {pickerOpen && !leagueIdsLoading && (
             <div style={{
               position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 50,
               background: t.surface, border: `1px solid ${t.borderHi}`,
