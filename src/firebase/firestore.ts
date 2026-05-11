@@ -48,6 +48,21 @@ export interface MatchDoc {
   locked: boolean;
 }
 
+export interface PickDoc {
+  userId: string;
+  matchId: string;
+  homeGoals: number | null;
+  awayGoals: number | null;
+  submittedAt: Timestamp | null;
+  lockedAt: Timestamp | null;
+  points: number | null;
+  pointsBreakdown: {
+    exact: boolean;
+    correctGap: boolean;
+    correctWinner: boolean;
+  } | null;
+}
+
 // ── Converters ───────────────────────────────────────────────
 
 function makeConverter<T extends object>(): FirestoreDataConverter<T> {
@@ -61,6 +76,7 @@ function makeConverter<T extends object>(): FirestoreDataConverter<T> {
 export const userConverter   = makeConverter<UserDoc>();
 export const inviteConverter = makeConverter<InviteDoc>();
 export const matchConverter  = makeConverter<MatchDoc>();
+export const pickConverter   = makeConverter<PickDoc>();
 
 // ── Collection refs ──────────────────────────────────────────
 
@@ -72,6 +88,9 @@ function requireDb() {
 export const usersCol   = () => collection(requireDb(), 'users').withConverter(userConverter);
 export const invitesCol = () => collection(requireDb(), 'invites').withConverter(inviteConverter);
 export const matchesCol = () => collection(requireDb(), 'matches').withConverter(matchConverter);
+export function picksCol(uid: string) {
+  return collection(requireDb(), 'picks', uid, 'matches').withConverter(pickConverter);
+}
 
 // ── Helpers ──────────────────────────────────────────────────
 
