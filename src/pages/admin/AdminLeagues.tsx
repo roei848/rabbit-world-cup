@@ -34,7 +34,7 @@ function generateCode(): string {
 }
 
 async function uploadLeaguePhoto(leagueId: string, file: File): Promise<string> {
-  if (!storage) return '';
+  if (!storage) throw new Error('Storage not configured');
   const storageRef = ref(storage, `leagues/${leagueId}/photo`);
   await uploadBytes(storageRef, file);
   return getDownloadURL(storageRef);
@@ -155,12 +155,16 @@ export function AdminLeagues() {
   }
 
   async function handleSubmit(e: React.FormEvent) {
+    if (saving) return;
     e.preventDefault();
     if (!formName.trim()) {
       setFormError('Name is required');
       return;
     }
-    if (!user) return;
+    if (!user) {
+      setFormError('Not authenticated');
+      return;
+    }
 
     setSaving(true);
     setFormError('');
@@ -175,7 +179,11 @@ export function AdminLeagues() {
           createdBy: user.uid,
           createdAt: Timestamp.now(),
         });
-      } else if (formMode === 'edit' && editingLeague) {
+      } else if (formMode === 'edit') {
+        if (!editingLeague) {
+          setFormError('No league selected for editing');
+          return; // finally will reset saving
+        }
         await updateDoc(leagueDoc(editingLeague.id), {
           name: formName.trim(),
           color: formColor,
@@ -186,6 +194,10 @@ export function AdminLeagues() {
       await loadLeagues();
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Save failed');
+      if (formMode === 'create' && formPhotoUrl && storage) {
+        deleteObject(ref(storage, `leagues/${formLeagueId}/photo`)).catch(() => {});
+      }
+    } finally {
       setSaving(false);
     }
   }
