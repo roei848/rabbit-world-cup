@@ -21,6 +21,7 @@ export function useLeagues(leagueIds: string[]): UseLeaguesResult {
       return;
     }
 
+    let active = true;
     setLoading(true);
     setError(null);
 
@@ -31,6 +32,7 @@ export function useLeagues(leagueIds: string[]): UseLeaguesResult {
       onSnapshot(
         leagueDoc(id),
         (snap) => {
+          if (!active) return;
           resolved[i] = snap.exists() ? { ...snap.data(), id: snap.id } : null;
           settled[i] = true;
           if (settled.every(Boolean)) {
@@ -39,7 +41,9 @@ export function useLeagues(leagueIds: string[]): UseLeaguesResult {
           }
         },
         (err) => {
+          if (!active) return;
           settled[i] = true;
+          setLeagues(resolved.filter(Boolean) as Array<LeagueDoc & { id: string }>);
           setError(err instanceof Error ? err : new Error(String(err)));
           if (settled.every(Boolean)) {
             setLoading(false);
@@ -49,6 +53,7 @@ export function useLeagues(leagueIds: string[]): UseLeaguesResult {
     );
 
     return () => {
+      active = false;
       unsubscribers.forEach((unsub) => unsub());
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -96,4 +96,34 @@ describe('useLeagues', () => {
 
     expect(unsubscribe).toHaveBeenCalledTimes(1);
   });
+
+  it('surfaces partial results when some listeners succeed and one errors', () => {
+    // First two calls succeed, third call errors
+    let callCount = 0;
+    mockOnSnapshot.mockImplementation(
+      (_ref: unknown, onNext: (snap: unknown) => void, onError: (err: Error) => void) => {
+        const index = callCount++;
+        if (index < 2) {
+          const id = ((_ref as { _id: string })._id);
+          onNext({
+            exists: () => true,
+            id,
+            data: () => makeLeague(id),
+          });
+        } else {
+          onError(new Error('Permission denied'));
+        }
+        return () => {};
+      }
+    );
+
+    const { result } = renderHook(() => useLeagues(['league1', 'league2', 'league3']));
+
+    expect(result.current.loading).toBe(false);
+    expect(result.current.error).toBeInstanceOf(Error);
+    expect(result.current.error?.message).toBe('Permission denied');
+    expect(result.current.leagues).toHaveLength(2);
+    expect(result.current.leagues[0].id).toBe('league1');
+    expect(result.current.leagues[1].id).toBe('league2');
+  });
 });
