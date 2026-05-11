@@ -2,9 +2,14 @@ import {
   collection,
   doc,
   getDoc,
+  getDocs,
   setDoc,
   updateDoc,
   serverTimestamp,
+  writeBatch,
+  arrayUnion,
+  query,
+  where,
   Timestamp,
   type FirestoreDataConverter,
   type QueryDocumentSnapshot,
@@ -79,6 +84,16 @@ export interface BonusPickDoc {
   worldCupWinner: { teamCode: string; submittedAt: Timestamp } | null;
 }
 
+export interface LeagueDoc {
+  name: string;
+  code: string;
+  color: 'pink' | 'blue' | 'green' | 'yellow' | 'orange' | 'purple';
+  photoUrl?: string;
+  memberIds: string[];
+  createdBy: string;
+  createdAt: Timestamp;
+}
+
 // ── Converters ───────────────────────────────────────────────
 
 function makeConverter<T extends object>(): FirestoreDataConverter<T> {
@@ -95,6 +110,7 @@ export const matchConverter           = makeConverter<MatchDoc>();
 export const pickConverter            = makeConverter<PickDoc>();
 export const leaderboardEntryConverter = makeConverter<LeaderboardEntry>();
 export const bonusPickConverter        = makeConverter<BonusPickDoc>();
+export const leagueConverter           = makeConverter<LeagueDoc>();
 
 // ── Collection refs ──────────────────────────────────────────
 
@@ -114,6 +130,10 @@ export function leaderboardEntriesCol(leagueId: string) {
 }
 export function bonusPickDoc(uid: string) {
   return doc(requireDb(), 'bonusPicks', uid).withConverter(bonusPickConverter);
+}
+export const leaguesCol = () => collection(requireDb(), 'leagues').withConverter(leagueConverter);
+export function leagueDoc(leagueId: string) {
+  return doc(requireDb(), 'leagues', leagueId).withConverter(leagueConverter);
 }
 
 // ── Helpers ──────────────────────────────────────────────────
@@ -137,4 +157,20 @@ export async function createUserDoc(uid: string, data: Omit<UserDoc, 'joinedAt'>
 
 export async function markInviteUsed(token: string): Promise<void> {
   await updateDoc(doc(invitesCol(), token), { used: true });
+}
+
+export async function joinLeague(leagueId: string, uid: string): Promise<void> {
+  const db_ = requireDb();
+  const batch = writeBatch(db_);
+  batch.update(doc(leaguesCol(), leagueId), { memberIds: arrayUnion(uid) });
+  batch.update(doc(usersCol(), uid), { leagueIds: arrayUnion(leagueId) });
+  await batch.commit();
+}
+
+export async function findLeagueByCode(code: string): Promise<(LeagueDoc & { id: string }) | null> {
+  const q = query(leaguesCol(), where('code', '==', code));
+  const snap = await getDocs(q);
+  if (snap.empty) return null;
+  const first = snap.docs[0];
+  return { ...first.data(), id: first.id };
 }
