@@ -96,7 +96,8 @@ function AppRoutes() {
 
       {/* Protected (auth required) */}
       <Route path="/matches" element={<ProtectedRoute><Matches /></ProtectedRoute>} />
-      <Route path="/leaderboard" element={<ProtectedRoute><Leaderboard /></ProtectedRoute>} />
+      <Route path="/leaderboard" element={<Navigate to="/leaderboard/global" replace />} />
+      <Route path="/leaderboard/:leagueId" element={<ProtectedRoute><Leaderboard /></ProtectedRoute>} />
       <Route path="/picks" element={<ProtectedRoute><Picks /></ProtectedRoute>} />
       <Route path="/bonus" element={<ProtectedRoute><Bonus /></ProtectedRoute>} />
       <Route path="/leagues" element={<ProtectedRoute><Leagues /></ProtectedRoute>} />

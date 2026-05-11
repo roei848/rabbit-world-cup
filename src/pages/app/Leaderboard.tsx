@@ -1,12 +1,15 @@
+import { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useTheme } from '../../theme/ThemeProvider';
 import { FONTS } from '../../theme/tokens';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLeaderboard } from '../../hooks/useLeaderboard';
+import { useLeagues } from '../../hooks/useLeagues';
+import { getUserDoc } from '../../firebase/firestore';
 import { LogoLockup, Avatar, Trend } from '../../components/primitives';
 import type { LeaderboardEntry } from '../../firebase/firestore';
 
-// TODO: Phase 6 — replace hardcoded 'global' with a user-selected leagueId
-const LEAGUE_ID = 'global';
+const globalLeague = { id: 'global', name: 'Global' };
 
 // ── User row (rank 4+) ────────────────────────────────────────
 
@@ -238,7 +241,38 @@ function StickyYouRow({ entry, displayName, t }: StickyYouRowProps) {
 export function Leaderboard() {
   const { theme: t }    = useTheme();
   const { user }        = useAuth();
-  const { entries, loading, error } = useLeaderboard(LEAGUE_ID);
+  const { leagueId = 'global' } = useParams<{ leagueId: string }>();
+  const navigate = useNavigate();
+
+  // Load user's league memberships
+  const [leagueIds, setLeagueIds] = useState<string[]>([]);
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    getUserDoc(user.uid).then(docData => {
+      if (cancelled) return;
+      setLeagueIds(docData?.leagueIds ?? []);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [user?.uid]);
+
+  const { leagues } = useLeagues(leagueIds);
+
+  // League picker state
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  // Close picker on outside click
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const handler = () => setPickerOpen(false);
+    document.addEventListener('click', handler);
+    return () => document.removeEventListener('click', handler);
+  }, [pickerOpen]);
+
+  const allLeagues = [globalLeague, ...leagues];
+  const currentLeague = allLeagues.find(lg => lg.id === leagueId);
+
+  const { entries, loading, error } = useLeaderboard(leagueId);
 
   const currentUid = user?.uid ?? null;
 
@@ -310,8 +344,53 @@ export function Leaderboard() {
             textTransform: 'uppercase',
           }}
         >
-          Global
+          {currentLeague?.name ?? leagueId}
         </span>
+      </div>
+
+      {/* ── League selector pill ────────────────────────────── */}
+      <div style={{ padding: '4px 18px 10px', flexShrink: 0 }}>
+        <div style={{ position: 'relative', display: 'inline-block' }}>
+          <button
+            onClick={(e) => { e.stopPropagation(); setPickerOpen(v => !v); }}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              padding: '5px 10px 5px 8px', borderRadius: 999,
+              background: t.surface, border: `1px solid ${t.border}`,
+              fontFamily: FONTS.body, fontSize: 11.5, fontWeight: 600,
+              color: t.ink, cursor: 'pointer',
+            }}
+          >
+            <span style={{ width: 16, height: 16, borderRadius: 5, background: t.yellow, display: 'inline-block' }} />
+            {currentLeague?.name ?? leagueId}
+            <span style={{ color: t.inkMuted, fontWeight: 500 }}>▾</span>
+          </button>
+
+          {pickerOpen && (
+            <div style={{
+              position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 50,
+              background: t.surface, border: `1px solid ${t.borderHi}`,
+              borderRadius: 12, overflow: 'hidden', minWidth: 160,
+              boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
+            }}>
+              {allLeagues.map(lg => (
+                <button key={lg.id}
+                  onClick={() => { navigate(`/leaderboard/${lg.id}`); setPickerOpen(false); }}
+                  style={{
+                    width: '100%', border: 0, textAlign: 'left',
+                    padding: '9px 14px',
+                    background: lg.id === leagueId ? t.surface2 : 'transparent',
+                    color: t.ink,
+                    fontFamily: FONTS.body, fontSize: 12.5, fontWeight: lg.id === leagueId ? 700 : 500,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {lg.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* ── Scrollable content ──────────────────────────────── */}
