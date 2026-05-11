@@ -33,13 +33,15 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.seedTournament = exports.lockPicks = exports.pollFootballAPI = exports.onUserCreated = exports.inviteUser = void 0;
+exports.calculatePoints = exports.seedTournament = exports.lockPicks = exports.pollFootballAPI = exports.onUserCreated = exports.inviteUser = void 0;
 const app_1 = require("firebase-admin/app");
 const firestore_1 = require("firebase-admin/firestore");
 const https_1 = require("firebase-functions/v2/https");
 const scheduler_1 = require("firebase-functions/v2/scheduler");
+const firestore_2 = require("firebase-functions/v2/firestore");
 const identity_1 = require("firebase-functions/v2/identity");
 const crypto = __importStar(require("crypto"));
+const scoring_1 = require("./scoring");
 (0, app_1.initializeApp)();
 const db = (0, firestore_1.getFirestore)();
 // ── Helpers ───────────────────────────────────────────────────
@@ -368,5 +370,149 @@ exports.seedTournament = (0, https_1.onCall)({ invoker: 'public' }, async (reque
     }
     console.log(`seedTournament: seeded ${seeded} fixture(s)`);
     return { seeded };
+});
+// ── calculatePoints ───────────────────────────────────────────
+// Firestore trigger: fires when a /matches/{matchId} document is updated.
+// When the match transitions to 'finished', scores all picks and rebuilds
+// leaderboard entries for every affected user.
+exports.calculatePoints = (0, firestore_2.onDocumentUpdated)('matches/{matchId}', async (event) => {
+    const before = event.data?.before.data();
+    const after = event.data?.after.data();
+    if (!before || !after)
+        return;
+    // Only run when transitioning to finished with a valid score
+    if (before['status'] === 'finished')
+        return;
+    if (after['status'] !== 'finished')
+        return;
+    if (!after['score'] || typeof after['score'] !== 'object')
+        return;
+    const matchId = event.params.matchId;
+    const score = after['score'];
+    const stage = after['stage'] ?? 'group';
+    console.log(`calculatePoints: scoring match ${matchId} (${stage}) — ${score.home}:${score.away}`);
+    // 1. Read scoring settings with fallback to defaults
+    let settings = scoring_1.DEFAULT_SCORING;
+    try {
+        const settingsSnap = await db.doc('/settings/scoring').get();
+        if (settingsSnap.exists) {
+            settings = { ...scoring_1.DEFAULT_SCORING, ...settingsSnap.data() };
+        }
+    }
+    catch (err) {
+        console.warn('calculatePoints: failed to read /settings/scoring, using defaults:', err);
+    }
+    // 2. Query all picks for this match across all users/leagues
+    const picksSnap = await db
+        .collectionGroup('matches')
+        .where('matchId', '==', matchId)
+        .get();
+    if (picksSnap.empty) {
+        console.log(`calculatePoints: no picks found for match ${matchId}`);
+        return;
+    }
+    console.log(`calculatePoints: found ${picksSnap.size} pick(s) for match ${matchId}`);
+    // 3. Score each pick and write points + breakdown back
+    const affectedUids = new Set();
+    const pickWritePromises = [];
+    for (const pickDoc of picksSnap.docs) {
+        const pickData = pickDoc.data();
+        const homeGoals = pickData['homeGoals'];
+        const awayGoals = pickData['awayGoals'];
+        if (typeof homeGoals !== 'number' || typeof awayGoals !== 'number') {
+            console.warn(`calculatePoints: pick ${pickDoc.ref.path} missing homeGoals/awayGoals — skipping`);
+            continue;
+        }
+        const pickScore = { home: homeGoals, away: awayGoals };
+        const result = (0, scoring_1.scorePick)(pickScore, score, settings, stage);
+        const uid = pickData['userId'];
+        if (uid)
+            affectedUids.add(uid);
+        pickWritePromises.push(pickDoc.ref.set({
+            points: result.points,
+            pointsBreakdown: result.breakdown,
+            scoredAt: firestore_1.FieldValue.serverTimestamp(),
+        }, { merge: true }));
+    }
+    const pickWriteResults = await Promise.allSettled(pickWritePromises);
+    pickWriteResults.forEach((r, i) => {
+        if (r.status === 'rejected') {
+            console.error(`calculatePoints: failed to write pick result ${i}:`, r.reason);
+        }
+    });
+    console.log(`calculatePoints: wrote points for ${pickWritePromises.length} pick(s)`);
+    if (affectedUids.size === 0)
+        return;
+    // 4. Rebuild leaderboard entries for every affected user across all their leagues
+    const affectedLeagueIds = new Set();
+    await Promise.all(Array.from(affectedUids).map(async (uid) => {
+        // Read user doc to get leagueIds
+        const userSnap = await db.collection('users').doc(uid).get();
+        if (!userSnap.exists)
+            return;
+        const userData = userSnap.data();
+        const leagueIds = userData.leagueIds ?? [];
+        const displayName = userData.displayName ?? '';
+        // Aggregate all scored picks for this user
+        const allPicksSnap = await db
+            .collectionGroup('matches')
+            .where('userId', '==', uid)
+            .get();
+        let totalPoints = 0;
+        let exactScores = 0;
+        for (const p of allPicksSnap.docs) {
+            const d = p.data();
+            if (d['points'] == null)
+                continue;
+            totalPoints += d['points'] ?? 0;
+            const bd = d['pointsBreakdown'];
+            if (bd?.['exact'] === true)
+                exactScores++;
+        }
+        // Write a leaderboard entry for each league this user belongs to
+        await Promise.all(leagueIds.map(async (leagueId) => {
+            affectedLeagueIds.add(leagueId);
+            const entryRef = db
+                .collection('leaderboard')
+                .doc(leagueId)
+                .collection('entries')
+                .doc(uid);
+            const existingSnap = await entryRef.get();
+            const prevRank = existingSnap.exists
+                ? existingSnap.data()['rank'] ?? 0
+                : 0;
+            await entryRef.set({
+                userId: uid,
+                displayName,
+                totalPoints,
+                exactScores,
+                rank: 0, // placeholder — recomputed below
+                prevRank,
+                lastUpdated: firestore_1.FieldValue.serverTimestamp(),
+            });
+        }));
+    }));
+    // 5. Recompute ranks for each affected league
+    await Promise.all(Array.from(affectedLeagueIds).map(async (leagueId) => {
+        const entriesSnap = await db
+            .collection('leaderboard')
+            .doc(leagueId)
+            .collection('entries')
+            .orderBy('totalPoints', 'desc')
+            .orderBy('exactScores', 'desc')
+            .get();
+        const BATCH_LIMIT = 500;
+        const docs = entriesSnap.docs;
+        for (let i = 0; i < docs.length; i += BATCH_LIMIT) {
+            const chunk = docs.slice(i, i + BATCH_LIMIT);
+            const batch = db.batch();
+            for (let j = 0; j < chunk.length; j++) {
+                batch.update(chunk[j].ref, { rank: i + j + 1 });
+            }
+            await batch.commit();
+        }
+        console.log(`calculatePoints: recomputed ranks for league ${leagueId} (${docs.length} entries)`);
+    }));
+    console.log(`calculatePoints: done — ${affectedUids.size} user(s), ${affectedLeagueIds.size} league(s)`);
 });
 //# sourceMappingURL=index.js.map

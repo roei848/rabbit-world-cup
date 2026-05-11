@@ -14,8 +14,8 @@ const STAGE_MULT: Record<MatchDoc['stage'], number> = {
   group: 1,
   r16:   2,
   qf:    3,
-  sf:    4,
-  final: 5,
+  sf:    3,
+  final: 4,
 };
 
 interface MatchCardProps {

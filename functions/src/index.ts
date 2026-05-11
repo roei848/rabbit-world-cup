@@ -486,14 +486,15 @@ export const calculatePoints = onDocumentUpdated('matches/{matchId}', async (eve
 
   for (const pickDoc of picksSnap.docs) {
     const pickData = pickDoc.data() as Record<string, unknown>;
-    const pick = pickData['score'] as { home: number; away: number } | undefined;
-
-    if (!pick || typeof pick.home !== 'number' || typeof pick.away !== 'number') {
-      console.warn(`calculatePoints: pick ${pickDoc.ref.path} has no valid score — skipping`);
+    const homeGoals = pickData['homeGoals'];
+    const awayGoals = pickData['awayGoals'];
+    if (typeof homeGoals !== 'number' || typeof awayGoals !== 'number') {
+      console.warn(`calculatePoints: pick ${pickDoc.ref.path} missing homeGoals/awayGoals — skipping`);
       continue;
     }
+    const pickScore = { home: homeGoals, away: awayGoals };
 
-    const result = scorePick(pick, score, settings, stage);
+    const result = scorePick(pickScore, score, settings, stage);
     const uid = pickData['userId'] as string | undefined;
     if (uid) affectedUids.add(uid);
 
@@ -509,7 +510,12 @@ export const calculatePoints = onDocumentUpdated('matches/{matchId}', async (eve
     );
   }
 
-  await Promise.all(pickWritePromises);
+  const pickWriteResults = await Promise.allSettled(pickWritePromises);
+  pickWriteResults.forEach((r, i) => {
+    if (r.status === 'rejected') {
+      console.error(`calculatePoints: failed to write pick result ${i}:`, r.reason);
+    }
+  });
   console.log(`calculatePoints: wrote points for ${pickWritePromises.length} pick(s)`);
 
   if (affectedUids.size === 0) return;
