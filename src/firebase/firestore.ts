@@ -63,6 +63,16 @@ export interface PickDoc {
   } | null;
 }
 
+export interface LeaderboardEntry {
+  userId: string;
+  displayName: string;
+  totalPoints: number;
+  exactScores: number;
+  rank: number;
+  prevRank: number;
+  lastUpdated: Timestamp;
+}
+
 // ── Converters ───────────────────────────────────────────────
 
 function makeConverter<T extends object>(): FirestoreDataConverter<T> {
@@ -73,10 +83,11 @@ function makeConverter<T extends object>(): FirestoreDataConverter<T> {
   };
 }
 
-export const userConverter   = makeConverter<UserDoc>();
-export const inviteConverter = makeConverter<InviteDoc>();
-export const matchConverter  = makeConverter<MatchDoc>();
-export const pickConverter   = makeConverter<PickDoc>();
+export const userConverter            = makeConverter<UserDoc>();
+export const inviteConverter          = makeConverter<InviteDoc>();
+export const matchConverter           = makeConverter<MatchDoc>();
+export const pickConverter            = makeConverter<PickDoc>();
+export const leaderboardEntryConverter = makeConverter<LeaderboardEntry>();
 
 // ── Collection refs ──────────────────────────────────────────
 
@@ -90,6 +101,9 @@ export const invitesCol = () => collection(requireDb(), 'invites').withConverter
 export const matchesCol = () => collection(requireDb(), 'matches').withConverter(matchConverter);
 export function picksCol(uid: string) {
   return collection(requireDb(), 'picks', uid, 'matches').withConverter(pickConverter);
+}
+export function leaderboardEntriesCol(leagueId: string) {
+  return collection(requireDb(), 'leaderboard', leagueId, 'entries').withConverter(leaderboardEntryConverter);
 }
 
 // ── Helpers ──────────────────────────────────────────────────
