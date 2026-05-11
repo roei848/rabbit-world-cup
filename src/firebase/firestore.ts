@@ -70,7 +70,7 @@ export interface LeaderboardEntry {
   exactScores: number;
   rank: number;
   prevRank: number;
-  lastUpdated: Timestamp;
+  lastUpdated?: Timestamp;
 }
 
 // ── Converters ───────────────────────────────────────────────

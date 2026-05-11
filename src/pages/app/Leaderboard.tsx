@@ -2,23 +2,11 @@ import { useTheme } from '../../theme/ThemeProvider';
 import { FONTS } from '../../theme/tokens';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLeaderboard } from '../../hooks/useLeaderboard';
-import { LogoLockup, Avatar } from '../../components/primitives';
+import { LogoLockup, Avatar, Trend } from '../../components/primitives';
 import type { LeaderboardEntry } from '../../firebase/firestore';
 
 // TODO: Phase 6 — replace hardcoded 'global' with a user-selected leagueId
 const LEAGUE_ID = 'global';
-
-// ── Trend arrow ───────────────────────────────────────────────
-
-function TrendArrow({ rank, prevRank, t }: { rank: number; prevRank: number; t: ReturnType<typeof useTheme>['theme'] }) {
-  if (prevRank === 0 || rank === prevRank) {
-    return <span style={{ color: t.inkMuted, fontSize: 13 }}>–</span>;
-  }
-  if (rank < prevRank) {
-    return <span style={{ color: t.up, fontSize: 13, fontWeight: 700 }}>↑</span>;
-  }
-  return <span style={{ color: t.down, fontSize: 13, fontWeight: 700 }}>↓</span>;
-}
 
 // ── User row (rank 4+) ────────────────────────────────────────
 
@@ -57,7 +45,10 @@ function UserRow({ entry, isCurrentUser, t }: UserRowProps) {
       </span>
 
       {/* Trend */}
-      <TrendArrow rank={entry.rank} prevRank={entry.prevRank} t={t} />
+      <Trend
+        dir={entry.prevRank === 0 || entry.rank === entry.prevRank ? 'flat' : entry.rank < entry.prevRank ? 'up' : 'down'}
+        theme={t}
+      />
 
       {/* Name */}
       <span
@@ -66,7 +57,7 @@ function UserRow({ entry, isCurrentUser, t }: UserRowProps) {
           fontFamily:   FONTS.body,
           fontSize:     14,
           fontWeight:   isCurrentUser ? 700 : 500,
-          color:        isCurrentUser ? t.ink : t.ink,
+          color:        t.ink,
           overflow:     'hidden',
           textOverflow: 'ellipsis',
           whiteSpace:   'nowrap',
@@ -211,7 +202,6 @@ function PodiumCard({ entry, position, t, isCurrentUser }: PodiumCardProps) {
 
 interface StickyYouRowProps {
   entry: LeaderboardEntry | null;
-  uid: string;
   displayName: string;
   t: ReturnType<typeof useTheme>['theme'];
 }
@@ -224,7 +214,6 @@ function StickyYouRow({ entry, displayName, t }: StickyYouRowProps) {
     exactScores: 0,
     rank:        0,
     prevRank:    0,
-    lastUpdated: null as any, // eslint-disable-line @typescript-eslint/no-explicit-any
   };
 
   return (
@@ -502,10 +491,9 @@ export function Leaderboard() {
       </div>
 
       {/* ── Sticky current-user row ─────────────────────────── */}
-      {!loading && user && (
+      {!loading && !error && user && (
         <StickyYouRow
           entry={currentUserEntry}
-          uid={user.uid}
           displayName={user.displayName ?? 'You'}
           t={t}
         />
