@@ -137,7 +137,7 @@ export function Leagues() {
   const navigate          = useNavigate();
 
   const [leagueIds, setLeagueIds]             = useState<string[]>([]);
-  const [leagueIdsLoading, setLeagueIdsLoading] = useState(true);
+  const [leagueIdsLoading, setLeagueIdsLoading] = useState(!!user);
 
   const [showJoin, setShowJoin]   = useState(false);
   const [joinCode, setJoinCode]   = useState('');
@@ -148,36 +148,45 @@ export function Leagues() {
 
   useEffect(() => {
     if (!user) return;
-    getUserDoc(user.uid).then((docData) => {
-      setLeagueIds(docData?.leagueIds ?? []);
-      setLeagueIdsLoading(false);
-    });
+    let cancelled = false;
+    getUserDoc(user.uid)
+      .then((docData) => {
+        if (cancelled) return;
+        setLeagueIds(docData?.leagueIds ?? []);
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLeagueIdsLoading(false); });
+    return () => { cancelled = true; };
   }, [user?.uid]);
 
-  const { leagues, loading: leaguesLoading } = useLeagues(leagueIds);
+  const { leagues, loading: leaguesLoading, error } = useLeagues(leagueIds);
   const loading = leagueIdsLoading || leaguesLoading;
 
   const totalMembers = leagues.reduce((sum, lg) => sum + lg.memberIds.length, 0);
 
   async function handleJoin() {
+    if (!user) return;
     setJoining(true);
     setJoinError(null);
-    const league = await findLeagueByCode(joinCode.trim().toUpperCase());
-    if (!league) {
-      setJoinError('Code not found');
+    try {
+      const league = await findLeagueByCode(joinCode.trim().toUpperCase());
+      if (!league) {
+        setJoinError('Code not found');
+        return;
+      }
+      if (league.memberIds.includes(uid)) {
+        setJoinError('Already a member');
+        return;
+      }
+      await joinLeague(league.id, uid);
+      setLeagueIds((prev) => [...prev, league.id]);
+      setShowJoin(false);
+      setJoinCode('');
+    } catch (err) {
+      setJoinError(err instanceof Error ? err.message : 'Failed to join league');
+    } finally {
       setJoining(false);
-      return;
     }
-    if (league.memberIds.includes(uid)) {
-      setJoinError('Already a member');
-      setJoining(false);
-      return;
-    }
-    await joinLeague(league.id, uid);
-    setLeagueIds((prev) => [...prev, league.id]);
-    setShowJoin(false);
-    setJoinCode('');
-    setJoining(false);
   }
 
   return (
@@ -377,8 +386,39 @@ export function Leagues() {
           </div>
         )}
 
+        {/* ── Error ────────────────────────────────────────── */}
+        {!loading && error && (
+          <div
+            style={{
+              display:        'flex',
+              flexDirection:  'column',
+              alignItems:     'center',
+              justifyContent: 'center',
+              padding:        '60px 24px',
+              gap:            8,
+              fontFamily:     FONTS.body,
+              textAlign:      'center',
+            }}
+          >
+            <span style={{ fontSize: 28 }}>🐇</span>
+            <span
+              style={{
+                color:      t.down,
+                fontSize:   14,
+                fontWeight: 600,
+                fontFamily: FONTS.display,
+              }}
+            >
+              Couldn't load leagues.
+            </span>
+            <span style={{ color: t.inkMuted, fontSize: 12 }}>
+              {error.message}
+            </span>
+          </div>
+        )}
+
         {/* ── Empty ────────────────────────────────────────── */}
-        {!loading && leagues.length === 0 && (
+        {!loading && !error && leagues.length === 0 && (
           <div
             style={{
               display:        'flex',
@@ -409,7 +449,7 @@ export function Leagues() {
         )}
 
         {/* ── League grid ──────────────────────────────────── */}
-        {!loading && leagues.length > 0 && (
+        {!loading && !error && leagues.length > 0 && (
           <div
             style={{
               padding:       '0 14px',
