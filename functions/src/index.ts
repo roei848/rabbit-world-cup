@@ -645,11 +645,22 @@ export const cacheWCPlayers = onCall({ invoker: 'public' }, async (request) => {
 
   do {
     const url = `https://v3.football.api-sports.io/players?league=1&season=${seasonId}&page=${page}`;
-    const res = await fetch(url, {
-      headers: { 'x-apisports-key': apiKey },
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!res.ok) throw new HttpsError('internal', `api-football failed: ${res.status}`);
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        headers: { 'x-apisports-key': apiKey },
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!res.ok) {
+        console.error(`cacheWCPlayers: page ${page} failed with ${res.status} — skipping`);
+        page++;
+        continue;
+      }
+    } catch (fetchErr) {
+      console.error(`cacheWCPlayers: page ${page} fetch error — skipping`, fetchErr);
+      page++;
+      continue;
+    }
 
     const data = await res.json() as ApiPlayersResponse;
     totalPages = data.paging?.total ?? 1;
@@ -664,6 +675,11 @@ export const cacheWCPlayers = onCall({ invoker: 'public' }, async (request) => {
     }
     page++;
   } while (page <= totalPages);
+
+  if (allPlayers.length === 0) {
+    console.warn('cacheWCPlayers: API returned 0 players — cache NOT written');
+    return { count: 0 };
+  }
 
   await db.doc('/cache/wcPlayers').set({
     players: allPlayers,

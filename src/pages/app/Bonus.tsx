@@ -60,7 +60,6 @@ function BonusCard({ icon, title, subtitle, reward, isLocked, t, children }: Bon
         marginBottom:  12,
       }}
     >
-      {/* Card header */}
       <div
         style={{
           display:        'flex',
@@ -112,7 +111,6 @@ function BonusCard({ icon, title, subtitle, reward, isLocked, t, children }: Bon
         </span>
       </div>
 
-      {/* Card body */}
       <div style={{ opacity: isLocked ? 0.55 : 1 }}>
         {isLocked ? (
           <div
@@ -163,15 +161,19 @@ function TopScorerPicker({ currentPick, submitTopScorer, t }: TopScorerPickerPro
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!db) return;
+    let cancelled = false;
+    if (!db) { setPlayersLoading(false); return; }
     getDoc(doc(db, 'cache', 'wcPlayers'))
       .then(snap => {
+        if (cancelled) return;
         if (snap.exists()) {
           const data = snap.data() as { players: WCPlayer[] };
           setPlayers(data.players ?? []);
         }
       })
-      .finally(() => setPlayersLoading(false));
+      .catch(() => { if (!cancelled) setPlayersLoading(false); })
+      .finally(() => { if (!cancelled) setPlayersLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   async function handleSelectPlayer(player: WCPlayer) {
@@ -190,7 +192,6 @@ function TopScorerPicker({ currentPick, submitTopScorer, t }: TopScorerPickerPro
 
   return (
     <div>
-      {/* Current pick (submitted) */}
       {currentPick && (
         <div
           style={{
@@ -230,7 +231,6 @@ function TopScorerPicker({ currentPick, submitTopScorer, t }: TopScorerPickerPro
         </div>
       )}
 
-      {/* Search input */}
       {playersLoading ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0' }}>
           <Spinner t={t} size={16} />
@@ -336,10 +336,13 @@ interface WCWinnerPickerProps {
 
 function WCWinnerPicker({ currentPickCode, submitWorldCupWinner, t }: WCWinnerPickerProps) {
   const [teams, setTeams] = useState<Array<{ code: string; name: string }>>([]);
+  const [teamsLoading, setTeamsLoading] = useState(true);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     getDocs(matchesCol()).then(snap => {
+      if (cancelled) return;
       const seen = new Map<string, string>();
       snap.docs.forEach(d => {
         const m = d.data();
@@ -350,7 +353,9 @@ function WCWinnerPicker({ currentPickCode, submitWorldCupWinner, t }: WCWinnerPi
         .map(([code, name]) => ({ code, name }))
         .sort((a, b) => a.name.localeCompare(b.name));
       setTeams(sorted);
-    });
+      setTeamsLoading(false);
+    }).catch(() => { if (!cancelled) setTeamsLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   async function handleSelectTeam(teamCode: string) {
@@ -360,6 +365,17 @@ function WCWinnerPicker({ currentPickCode, submitWorldCupWinner, t }: WCWinnerPi
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'Failed to submit pick');
     }
+  }
+
+  if (teamsLoading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0' }}>
+        <Spinner t={t} size={16} />
+        <span style={{ fontFamily: FONTS.body, fontSize: 12, color: t.inkMuted }}>
+          Loading teams…
+        </span>
+      </div>
+    );
   }
 
   if (teams.length === 0) {
@@ -400,7 +416,7 @@ function WCWinnerPicker({ currentPickCode, submitWorldCupWinner, t }: WCWinnerPi
                 gap:          8,
                 width:        '100%',
                 padding:      '9px 10px',
-                background:   isSelected ? `rgba(${t.up === '#3DD68C' ? '61,214,140' : '31,165,106'},0.10)` : 'transparent',
+                background:   isSelected ? t.rowYou : 'transparent',
                 border:       'none',
                 borderBottom: `1px solid ${t.border}`,
                 cursor:       'pointer',
