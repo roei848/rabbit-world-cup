@@ -10,8 +10,6 @@ interface FinishedBreakdownProps {
 export function FinishedBreakdown({ pick }: FinishedBreakdownProps) {
   const { theme: t } = useTheme();
 
-  const hasPoints = pick !== null && pick.points !== null;
-
   return (
     <div
       style={{
@@ -26,19 +24,34 @@ export function FinishedBreakdown({ pick }: FinishedBreakdownProps) {
         fontSize: 11,
       }}
     >
-      {hasPoints ? (
+      {pick === null ? (
+        // Case 1: No pick submitted
+        <span style={{ color: t.inkDim, fontSize: 11 }}>No pick submitted</span>
+      ) : pick.points === null ? (
+        // Case 2: Pick submitted, awaiting result
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ color: t.inkMuted }}>
+            Your pick:{' '}
+            <span style={{ color: t.ink, fontWeight: 600 }}>
+              {pick.homeGoals} – {pick.awayGoals}
+            </span>
+          </span>
+          <span style={{ color: t.inkMuted, fontSize: 10 }}>Awaiting result</span>
+        </div>
+      ) : (
+        // Case 3: Pick submitted with points (scored)
         <>
           {/* Pick + points */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ color: t.inkMuted }}>
               Your pick:{' '}
               <span style={{ color: t.ink, fontWeight: 600 }}>
-                {pick!.homeGoals} – {pick!.awayGoals}
+                {pick.homeGoals} – {pick.awayGoals}
               </span>
             </span>
 
             {/* Result badge */}
-            {pick!.pointsBreakdown?.exact && (
+            {pick.pointsBreakdown?.exact && (
               <span
                 style={{
                   padding: '2px 7px',
@@ -53,7 +66,7 @@ export function FinishedBreakdown({ pick }: FinishedBreakdownProps) {
                 Exact
               </span>
             )}
-            {!pick!.pointsBreakdown?.exact && pick!.pointsBreakdown?.correctGap && (
+            {!pick.pointsBreakdown?.exact && pick.pointsBreakdown?.correctGap && (
               <span
                 style={{
                   padding: '2px 7px',
@@ -68,9 +81,9 @@ export function FinishedBreakdown({ pick }: FinishedBreakdownProps) {
                 Correct margin
               </span>
             )}
-            {!pick!.pointsBreakdown?.exact &&
-              !pick!.pointsBreakdown?.correctGap &&
-              pick!.pointsBreakdown?.correctWinner && (
+            {!pick.pointsBreakdown?.exact &&
+              !pick.pointsBreakdown?.correctGap &&
+              pick.pointsBreakdown?.correctWinner && (
                 <span
                   style={{
                     padding: '2px 7px',
@@ -97,11 +110,9 @@ export function FinishedBreakdown({ pick }: FinishedBreakdownProps) {
               flexShrink: 0,
             }}
           >
-            +{pick!.points} pts
+            +{pick.points} pts
           </span>
         </>
-      ) : (
-        <span style={{ color: t.inkDim, fontSize: 11 }}>No pick submitted</span>
       )}
     </div>
   );
