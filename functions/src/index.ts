@@ -717,10 +717,20 @@ export const settleBonuses = onCall({ invoker: 'public' }, async (request) => {
   if (!uid) throw new HttpsError('unauthenticated', 'Must be signed in');
   await assertAdmin(uid);
 
-  // 1. Idempotency check
-  const systemSnap = await db.doc('/settings/system').get();
-  const systemData = systemSnap.exists ? (systemSnap.data() as Record<string, unknown>) : {};
-  if (systemData['tournamentFinishedAt']) {
+  // 1. Atomic idempotency check — claim the settlement lock in a transaction
+  const sysRef = db.doc('/settings/system');
+  let alreadySettled = false;
+  await db.runTransaction(async (txn) => {
+    const snap = await txn.get(sysRef);
+    const data = snap.exists ? (snap.data() as Record<string, unknown>) : {};
+    if (data['tournamentFinishedAt']) {
+      alreadySettled = true;
+      return; // abort the transaction without writing
+    }
+    // Atomically claim — write the marker now, before doing any work
+    txn.set(sysRef, { tournamentFinishedAt: FieldValue.serverTimestamp() }, { merge: true });
+  });
+  if (alreadySettled) {
     throw new HttpsError('already-exists', 'Bonuses already settled. Clear tournamentFinishedAt to re-run.');
   }
 
@@ -780,13 +790,13 @@ export const settleBonuses = onCall({ invoker: 'public' }, async (request) => {
     let pts = 0;
     if (pick.topScorer?.playerId === topScorerApiId) pts += bonusPoints.topScorer;
     if (pick.worldCupWinner?.teamCode === winnerCode)  pts += bonusPoints.worldCupWinner;
-    if (pts > 0) awards.push({ uid: pick.userId, pts });
+    if (pts > 0) awards.push({ uid: pickDoc.id, pts });
   }
 
   // 6. Update leaderboard entries
   const affectedLeagueIds = new Set<string>();
 
-  await Promise.all(awards.map(async ({ uid: awardUid, pts }) => {
+  const awardResults = await Promise.allSettled(awards.map(async ({ uid: awardUid, pts }) => {
     const userSnap = await db.collection('users').doc(awardUid).get();
     if (!userSnap.exists) return;
     const userData = userSnap.data() as { leagueIds?: string[] };
@@ -795,12 +805,17 @@ export const settleBonuses = onCall({ invoker: 'public' }, async (request) => {
     await Promise.all(leagueIds.map(async (leagueId) => {
       affectedLeagueIds.add(leagueId);
       const entryRef = db.collection('leaderboard').doc(leagueId).collection('entries').doc(awardUid);
-      await entryRef.update({
-        totalPoints: FieldValue.increment(pts),
-        lastUpdated: FieldValue.serverTimestamp(),
-      });
+      await entryRef.set(
+        { totalPoints: FieldValue.increment(pts), lastUpdated: FieldValue.serverTimestamp() },
+        { merge: true }
+      );
     }));
   }));
+  awardResults.forEach((r, i) => {
+    if (r.status === 'rejected') {
+      console.error(`settleBonuses: failed to update leaderboard for award ${i}:`, r.reason);
+    }
+  });
 
   // Recompute ranks — same pattern as calculatePoints
   await Promise.all(Array.from(affectedLeagueIds).map(async (leagueId) => {
@@ -821,13 +836,7 @@ export const settleBonuses = onCall({ invoker: 'public' }, async (request) => {
     console.log(`settleBonuses: recomputed ranks for league ${leagueId}`);
   }));
 
-  // 7. Mark settled
-  await db.doc('/settings/system').set(
-    { tournamentFinishedAt: FieldValue.serverTimestamp() },
-    { merge: true }
-  );
-
-  // 8. Audit log
+  // 7. Audit log
   await db.collection('auditLog').add({
     type:         'bonuses-settled',
     who:          uid,
