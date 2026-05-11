@@ -577,7 +577,7 @@ export function Bonus() {
               icon="⚽"
               title="Top Scorer"
               subtitle="Pick the player who will score the most goals"
-              reward="+15 pts"
+              reward="+10 pts"
               isLocked={isLocked}
               t={t}
             >
@@ -593,7 +593,7 @@ export function Bonus() {
               icon="🏆"
               title="WC Winner"
               subtitle="Pick the team that will lift the trophy"
-              reward="+10 pts"
+              reward="+15 pts"
               isLocked={isLocked}
               t={t}
             >
