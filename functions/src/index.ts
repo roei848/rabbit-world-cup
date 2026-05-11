@@ -69,7 +69,24 @@ interface ApiResponse {
   response: ApiFixture[];
 }
 
+interface ApiTopScorerItem {
+  player: { id: number; name: string };
+  statistics: Array<{ goals: { total: number | null } }>;
+}
+
+interface ApiTopScorersResponse {
+  response: ApiTopScorerItem[];
+}
+
 // ── Helpers ───────────────────────────────────────────────────
+
+export function deriveWinner(
+  score: { home: number; away: number },
+  homeCode: string,
+  awayCode: string
+): string {
+  return score.home >= score.away ? homeCode : awayCode;
+}
 
 function mapStatus(short: string): 'live' | 'finished' | 'upcoming' {
   if (['1H', 'HT', '2H', 'ET', 'BT', 'P'].includes(short)) return 'live';
@@ -689,4 +706,138 @@ export const cacheWCPlayers = onCall({ invoker: 'public' }, async (request) => {
 
   console.log(`cacheWCPlayers: cached ${allPlayers.length} players for season ${seasonId}`);
   return { count: allPlayers.length };
+});
+
+// ── settleBonuses ─────────────────────────────────────────────
+// HTTPS callable (admin only). Run once after the tournament ends.
+// Evaluates all bonus picks against the actual top scorer and WC winner,
+// updates leaderboard entries, recomputes ranks, and marks the tournament settled.
+export const settleBonuses = onCall({ invoker: 'public' }, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Must be signed in');
+  await assertAdmin(uid);
+
+  // 1. Idempotency check
+  const systemSnap = await db.doc('/settings/system').get();
+  const systemData = systemSnap.exists ? (systemSnap.data() as Record<string, unknown>) : {};
+  if (systemData['tournamentFinishedAt']) {
+    throw new HttpsError('already-exists', 'Bonuses already settled. Clear tournamentFinishedAt to re-run.');
+  }
+
+  // 2. Find WC winner from final match
+  const finalSnap = await db.collection('matches')
+    .where('stage', '==', 'final')
+    .where('status', '==', 'finished')
+    .limit(1)
+    .get();
+  if (finalSnap.empty) throw new HttpsError('failed-precondition', 'Final match not yet finished');
+
+  const finalMatch = finalSnap.docs[0].data() as {
+    score: { home: number; away: number };
+    homeTeam: { code: string; name: string };
+    awayTeam: { code: string; name: string };
+  };
+  const { score, homeTeam, awayTeam } = finalMatch;
+  const winnerCode = deriveWinner(score, homeTeam.code, awayTeam.code);
+
+  // 3. Get top scorer from api-football
+  const apiKey = process.env['API_FOOTBALL_KEY'] ?? '';
+  if (!apiKey) throw new HttpsError('failed-precondition', 'API_FOOTBALL_KEY not configured');
+  const seasonId = await getSeasonId();
+
+  const tsRes = await fetch(
+    `https://v3.football.api-sports.io/players/topscorers?league=1&season=${seasonId}`,
+    { headers: { 'x-apisports-key': apiKey }, signal: AbortSignal.timeout(10_000) }
+  );
+  if (!tsRes.ok) throw new HttpsError('internal', `api-football topscorers failed: ${tsRes.status}`);
+  const tsData = (await tsRes.json()) as ApiTopScorersResponse;
+  if (!tsData.response?.length) throw new HttpsError('internal', 'No top scorer data');
+
+  const topScorerApiId = String(tsData.response[0].player.id);
+  const topScorerName  = tsData.response[0].player.name;
+
+  // 4. Read bonus point values from settings
+  let bonusPoints = { topScorer: 10, worldCupWinner: 15 };
+  const scoringSnap = await db.doc('/settings/scoring').get();
+  if (scoringSnap.exists) {
+    const s = scoringSnap.data() as { bonusPoints?: { topScorer?: number; worldCupWinner?: number } };
+    bonusPoints = {
+      topScorer:      s.bonusPoints?.topScorer      ?? 10,
+      worldCupWinner: s.bonusPoints?.worldCupWinner ?? 15,
+    };
+  }
+
+  // 5. Scan bonusPicks and compute awards
+  const bonusPicksSnap = await db.collection('bonusPicks').get();
+  const awards: Array<{ uid: string; pts: number }> = [];
+
+  for (const pickDoc of bonusPicksSnap.docs) {
+    const pick = pickDoc.data() as {
+      userId: string;
+      topScorer: { playerId: string } | null;
+      worldCupWinner: { teamCode: string } | null;
+    };
+    let pts = 0;
+    if (pick.topScorer?.playerId === topScorerApiId) pts += bonusPoints.topScorer;
+    if (pick.worldCupWinner?.teamCode === winnerCode)  pts += bonusPoints.worldCupWinner;
+    if (pts > 0) awards.push({ uid: pick.userId, pts });
+  }
+
+  // 6. Update leaderboard entries
+  const affectedLeagueIds = new Set<string>();
+
+  await Promise.all(awards.map(async ({ uid: awardUid, pts }) => {
+    const userSnap = await db.collection('users').doc(awardUid).get();
+    if (!userSnap.exists) return;
+    const userData = userSnap.data() as { leagueIds?: string[] };
+    const leagueIds = userData.leagueIds ?? [];
+
+    await Promise.all(leagueIds.map(async (leagueId) => {
+      affectedLeagueIds.add(leagueId);
+      const entryRef = db.collection('leaderboard').doc(leagueId).collection('entries').doc(awardUid);
+      await entryRef.update({
+        totalPoints: FieldValue.increment(pts),
+        lastUpdated: FieldValue.serverTimestamp(),
+      });
+    }));
+  }));
+
+  // Recompute ranks — same pattern as calculatePoints
+  await Promise.all(Array.from(affectedLeagueIds).map(async (leagueId) => {
+    const entriesSnap = await db
+      .collection('leaderboard').doc(leagueId).collection('entries')
+      .orderBy('totalPoints', 'desc')
+      .orderBy('exactScores', 'desc')
+      .get();
+
+    const BATCH_LIMIT = 500;
+    const docs = entriesSnap.docs;
+    for (let i = 0; i < docs.length; i += BATCH_LIMIT) {
+      const chunk = docs.slice(i, i + BATCH_LIMIT);
+      const batch = db.batch();
+      for (let j = 0; j < chunk.length; j++) batch.update(chunk[j].ref, { rank: i + j + 1 });
+      await batch.commit();
+    }
+    console.log(`settleBonuses: recomputed ranks for league ${leagueId}`);
+  }));
+
+  // 7. Mark settled
+  await db.doc('/settings/system').set(
+    { tournamentFinishedAt: FieldValue.serverTimestamp() },
+    { merge: true }
+  );
+
+  // 8. Audit log
+  await db.collection('auditLog').add({
+    type:         'bonuses-settled',
+    who:          uid,
+    topScorerApiId,
+    topScorerName,
+    winnerCode,
+    usersAwarded: awards.length,
+    when:         FieldValue.serverTimestamp(),
+  });
+
+  console.log(`settleBonuses: ${awards.length} user(s) awarded — top scorer: ${topScorerName}, winner: ${winnerCode}`);
+  return { topScorer: { apiId: topScorerApiId, name: topScorerName }, worldCupWinner: winnerCode, usersAwarded: awards.length };
 });
