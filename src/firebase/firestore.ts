@@ -10,6 +10,7 @@ import {
   arrayUnion,
   query,
   where,
+  increment,
   Timestamp,
   type FieldValue,
   type FirestoreDataConverter,
@@ -203,4 +204,51 @@ export async function updateUserRole(uid: string, isAdmin: boolean): Promise<voi
 
 export async function updateUserStatus(uid: string, status: 'active' | 'banned'): Promise<void> {
   await updateDoc(doc(usersCol(), uid), { status });
+}
+
+// ── Audit log ────────────────────────────────────────────────
+
+export interface AuditLogEntry {
+  type: 'point-adjustment';
+  who: string;
+  whoUid: string;
+  target: string;
+  targetUid: string;
+  delta: number;
+  reason: string;
+  when: Timestamp;
+}
+
+export const auditLogConverter = makeConverter<AuditLogEntry>();
+export const auditLogCol = () =>
+  collection(requireDb(), 'auditLog').withConverter(auditLogConverter);
+
+export async function applyPointAdjustment(
+  adminDisplayName: string,
+  adminUid: string,
+  targetUser: { id: string; displayName: string; leagueIds: string[] },
+  delta: number,
+  reason: string,
+): Promise<void> {
+  const db_ = requireDb();
+  const batch = writeBatch(db_);
+
+  const logRef = doc(auditLogCol());
+  batch.set(logRef, {
+    type: 'point-adjustment',
+    who: adminDisplayName,
+    whoUid: adminUid,
+    target: targetUser.displayName,
+    targetUid: targetUser.id,
+    delta,
+    reason,
+    when: Timestamp.now(),
+  } as AuditLogEntry);
+
+  for (const leagueId of targetUser.leagueIds) {
+    const entryRef = doc(leaderboardEntriesCol(leagueId), targetUser.id);
+    batch.set(entryRef, { totalPoints: increment(delta) }, { merge: true });
+  }
+
+  await batch.commit();
 }
