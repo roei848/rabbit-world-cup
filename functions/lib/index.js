@@ -121,6 +121,9 @@ exports.joinLeague = (0, https_1.onCall)({ invoker: 'public' }, async (request) 
     const { leagueId, code } = request.data;
     if (!leagueId || !code)
         throw new https_1.HttpsError('invalid-argument', 'leagueId and code are required');
+    if (typeof leagueId !== 'string' || typeof code !== 'string') {
+        throw new https_1.HttpsError('invalid-argument', 'leagueId and code must be strings');
+    }
     const leagueSnap = await db.collection('leagues').doc(leagueId).get();
     if (!leagueSnap.exists)
         throw new https_1.HttpsError('not-found', 'League not found');
@@ -128,13 +131,31 @@ exports.joinLeague = (0, https_1.onCall)({ invoker: 'public' }, async (request) 
     if (league['code'] !== code.toUpperCase().trim()) {
         throw new https_1.HttpsError('permission-denied', 'Incorrect league code');
     }
-    if (league['memberIds'].includes(uid)) {
+    const memberIds = Array.isArray(league['memberIds']) ? league['memberIds'] : [];
+    if (memberIds.includes(uid)) {
         return { success: true }; // Already a member — idempotent
+    }
+    // Rate-limit: max 20 join attempts per user per hour
+    const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const joinCountSnap = await db.collection('auditLog')
+        .where('type', '==', 'league-join')
+        .where('who', '==', uid)
+        .where('when', '>=', hourAgo)
+        .count()
+        .get();
+    if (joinCountSnap.data().count >= 20) {
+        throw new https_1.HttpsError('resource-exhausted', 'Too many join attempts. Try again later.');
     }
     const batch = db.batch();
     batch.update(db.collection('leagues').doc(leagueId), { memberIds: firestore_1.FieldValue.arrayUnion(uid) });
-    batch.update(db.collection('users').doc(uid), { leagueIds: firestore_1.FieldValue.arrayUnion(leagueId) });
+    batch.set(db.collection('users').doc(uid), { leagueIds: firestore_1.FieldValue.arrayUnion(leagueId) }, { merge: true });
     await batch.commit();
+    await db.collection('auditLog').add({
+        type: 'league-join',
+        who: uid,
+        target: leagueId,
+        when: firestore_1.FieldValue.serverTimestamp(),
+    });
     return { success: true };
 });
 // ── inviteUser ────────────────────────────────────────────────

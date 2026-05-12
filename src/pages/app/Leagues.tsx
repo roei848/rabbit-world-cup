@@ -193,7 +193,16 @@ export function Leagues() {
       setShowJoin(false);
       setJoinCode('');
     } catch (err) {
-      setJoinError(err instanceof Error ? err.message : 'Failed to join league');
+      if (err && typeof err === 'object' && 'code' in err) {
+        const code = (err as { code: string }).code;
+        if (code === 'functions/permission-denied') setJoinError('Incorrect league code. Double-check and try again.');
+        else if (code === 'functions/not-found') setJoinError('League not found.');
+        else if (code === 'functions/resource-exhausted') setJoinError('Too many attempts. Try again in an hour.');
+        else if (code === 'functions/unauthenticated') setJoinError('Sign in to join a league.');
+        else setJoinError('Failed to join league. Please try again.');
+      } else {
+        setJoinError(err instanceof Error ? err.message : 'Failed to join league');
+      }
     } finally {
       setJoining(false);
     }

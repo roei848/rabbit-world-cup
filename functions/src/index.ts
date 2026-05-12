@@ -154,6 +154,9 @@ export const joinLeague = onCall({ invoker: 'public' }, async (request) => {
 
   const { leagueId, code } = request.data as { leagueId: string; code: string };
   if (!leagueId || !code) throw new HttpsError('invalid-argument', 'leagueId and code are required');
+  if (typeof leagueId !== 'string' || typeof code !== 'string') {
+    throw new HttpsError('invalid-argument', 'leagueId and code must be strings');
+  }
 
   const leagueSnap = await db.collection('leagues').doc(leagueId).get();
   if (!leagueSnap.exists) throw new HttpsError('not-found', 'League not found');
@@ -161,14 +164,36 @@ export const joinLeague = onCall({ invoker: 'public' }, async (request) => {
   if (league['code'] !== code.toUpperCase().trim()) {
     throw new HttpsError('permission-denied', 'Incorrect league code');
   }
-  if ((league['memberIds'] as string[]).includes(uid)) {
+  const memberIds = Array.isArray(league['memberIds']) ? league['memberIds'] as string[] : [];
+  if (memberIds.includes(uid)) {
     return { success: true }; // Already a member — idempotent
+  }
+
+  // Rate-limit: max 20 join attempts per user per hour
+  const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
+  const joinCountSnap = await db.collection('auditLog')
+    .where('type', '==', 'league-join')
+    .where('who', '==', uid)
+    .where('when', '>=', hourAgo)
+    .count()
+    .get();
+
+  if (joinCountSnap.data().count >= 20) {
+    throw new HttpsError('resource-exhausted', 'Too many join attempts. Try again later.');
   }
 
   const batch = db.batch();
   batch.update(db.collection('leagues').doc(leagueId), { memberIds: FieldValue.arrayUnion(uid) });
-  batch.update(db.collection('users').doc(uid), { leagueIds: FieldValue.arrayUnion(leagueId) });
+  batch.set(db.collection('users').doc(uid), { leagueIds: FieldValue.arrayUnion(leagueId) }, { merge: true });
   await batch.commit();
+
+  await db.collection('auditLog').add({
+    type: 'league-join',
+    who: uid,
+    target: leagueId,
+    when: FieldValue.serverTimestamp(),
+  });
+
   return { success: true };
 });
 
