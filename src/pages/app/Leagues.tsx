@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { useTheme } from '../../theme/ThemeProvider';
 import { FONTS, USER_COLORS } from '../../theme/tokens';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLeagues } from '../../hooks/useLeagues';
 import { useLeaderboard } from '../../hooks/useLeaderboard';
-import { getUserDoc, findLeagueByCode, joinLeague, type LeagueDoc } from '../../firebase/firestore';
+import { getUserDoc, findLeagueByCode, type LeagueDoc } from '../../firebase/firestore';
+import { app } from '../../firebase/client';
 import { LogoLockup, Avatar, RabbitMark } from '../../components/primitives';
 
 // ── League card ───────────────────────────────────────────────
@@ -169,7 +171,9 @@ export function Leagues() {
     setJoining(true);
     setJoinError(null);
     try {
-      const league = await findLeagueByCode(joinCode.trim().toUpperCase());
+      const trimmedCode = joinCode.trim().toUpperCase();
+      // Look up the league by code first so we can show its name and catch "not found" early.
+      const league = await findLeagueByCode(trimmedCode);
       if (!league) {
         setJoinError('Code not found');
         return;
@@ -178,7 +182,13 @@ export function Leagues() {
         setJoinError('Already a member');
         return;
       }
-      await joinLeague(league.id, uid);
+      // Use the Cloud Function so neither memberIds nor leagueIds need client-writable rules.
+      const functions = getFunctions(app ?? undefined);
+      const joinLeagueFn = httpsCallable<{ leagueId: string; code: string }, { success: boolean }>(
+        functions,
+        'joinLeague',
+      );
+      await joinLeagueFn({ leagueId: league.id, code: trimmedCode });
       setLeagueIds((prev) => [...prev, league.id]);
       setShowJoin(false);
       setJoinCode('');

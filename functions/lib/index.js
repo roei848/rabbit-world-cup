@@ -33,7 +33,8 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.calculatePoints = exports.seedTournament = exports.lockPicks = exports.pollFootballAPI = exports.onUserCreated = exports.inviteUser = void 0;
+exports.settleBonuses = exports.cacheWCPlayers = exports.calculatePoints = exports.seedTournament = exports.lockPicks = exports.pollFootballAPI = exports.onUserCreated = exports.inviteUser = exports.joinLeague = void 0;
+exports.deriveWinner = deriveWinner;
 const app_1 = require("firebase-admin/app");
 const firestore_1 = require("firebase-admin/firestore");
 const https_1 = require("firebase-functions/v2/https");
@@ -45,6 +46,9 @@ const scoring_1 = require("./scoring");
 (0, app_1.initializeApp)();
 const db = (0, firestore_1.getFirestore)();
 // ── Helpers ───────────────────────────────────────────────────
+function deriveWinner(score, homeCode, awayCode) {
+    return score.home >= score.away ? homeCode : awayCode;
+}
 function mapStatus(short) {
     if (['1H', 'HT', '2H', 'ET', 'BT', 'P'].includes(short))
         return 'live';
@@ -106,6 +110,33 @@ async function getSeasonId() {
     }
     return 2026;
 }
+// ── joinLeague ────────────────────────────────────────────────
+// Callable: authenticated user joins a league by providing its code.
+// Verifies the code server-side before writing to Firestore so that
+// neither memberIds nor leagueIds need client-writable rules.
+exports.joinLeague = (0, https_1.onCall)({ invoker: 'public' }, async (request) => {
+    const uid = request.auth?.uid;
+    if (!uid)
+        throw new https_1.HttpsError('unauthenticated', 'Must be signed in');
+    const { leagueId, code } = request.data;
+    if (!leagueId || !code)
+        throw new https_1.HttpsError('invalid-argument', 'leagueId and code are required');
+    const leagueSnap = await db.collection('leagues').doc(leagueId).get();
+    if (!leagueSnap.exists)
+        throw new https_1.HttpsError('not-found', 'League not found');
+    const league = leagueSnap.data();
+    if (league['code'] !== code.toUpperCase().trim()) {
+        throw new https_1.HttpsError('permission-denied', 'Incorrect league code');
+    }
+    if (league['memberIds'].includes(uid)) {
+        return { success: true }; // Already a member — idempotent
+    }
+    const batch = db.batch();
+    batch.update(db.collection('leagues').doc(leagueId), { memberIds: firestore_1.FieldValue.arrayUnion(uid) });
+    batch.update(db.collection('users').doc(uid), { leagueIds: firestore_1.FieldValue.arrayUnion(leagueId) });
+    await batch.commit();
+    return { success: true };
+});
 // ── inviteUser ────────────────────────────────────────────────
 // Callable: admin sends an invite link for a given email.
 // Requires caller to have isAdmin custom claim.
@@ -514,5 +545,185 @@ exports.calculatePoints = (0, firestore_2.onDocumentUpdated)('matches/{matchId}'
         console.log(`calculatePoints: recomputed ranks for league ${leagueId} (${docs.length} entries)`);
     }));
     console.log(`calculatePoints: done — ${affectedUids.size} user(s), ${affectedLeagueIds.size} league(s)`);
+});
+// ── cacheWCPlayers ────────────────────────────────────────────
+// HTTPS callable (admin only). Fetches all WC 2026 players from
+// api-football.com (paginated) and caches them in /cache/wcPlayers.
+exports.cacheWCPlayers = (0, https_1.onCall)({ invoker: 'public' }, async (request) => {
+    const uid = request.auth?.uid;
+    if (!uid)
+        throw new https_1.HttpsError('unauthenticated', 'Must be signed in');
+    await assertAdmin(uid);
+    const apiKey = process.env['API_FOOTBALL_KEY'] ?? '';
+    if (!apiKey)
+        throw new https_1.HttpsError('failed-precondition', 'API_FOOTBALL_KEY not configured');
+    const seasonId = await getSeasonId();
+    const allPlayers = [];
+    let page = 1;
+    let totalPages = 1;
+    do {
+        const url = `https://v3.football.api-sports.io/players?league=1&season=${seasonId}&page=${page}`;
+        let res;
+        try {
+            res = await fetch(url, {
+                headers: { 'x-apisports-key': apiKey },
+                signal: AbortSignal.timeout(15_000),
+            });
+            if (!res.ok) {
+                console.error(`cacheWCPlayers: page ${page} failed with ${res.status} — skipping`);
+                page++;
+                continue;
+            }
+        }
+        catch (fetchErr) {
+            console.error(`cacheWCPlayers: page ${page} fetch error — skipping`, fetchErr);
+            page++;
+            continue;
+        }
+        const data = await res.json();
+        totalPages = data.paging?.total ?? 1;
+        for (const item of data.response ?? []) {
+            const teamCode = item.statistics?.[0]?.team?.code ?? '';
+            allPlayers.push({
+                id: item.player.id,
+                name: item.player.name,
+                teamCode,
+            });
+        }
+        page++;
+    } while (page <= totalPages);
+    if (allPlayers.length === 0) {
+        console.warn('cacheWCPlayers: API returned 0 players — cache NOT written');
+        return { count: 0 };
+    }
+    await db.doc('/cache/wcPlayers').set({
+        players: allPlayers,
+        cachedAt: firestore_1.FieldValue.serverTimestamp(),
+        season: seasonId,
+    });
+    console.log(`cacheWCPlayers: cached ${allPlayers.length} players for season ${seasonId}`);
+    return { count: allPlayers.length };
+});
+// ── settleBonuses ─────────────────────────────────────────────
+// HTTPS callable (admin only). Run once after the tournament ends.
+// Evaluates all bonus picks against the actual top scorer and WC winner,
+// updates leaderboard entries, recomputes ranks, and marks the tournament settled.
+exports.settleBonuses = (0, https_1.onCall)({ invoker: 'public' }, async (request) => {
+    const uid = request.auth?.uid;
+    if (!uid)
+        throw new https_1.HttpsError('unauthenticated', 'Must be signed in');
+    await assertAdmin(uid);
+    // 1. Atomic idempotency check — claim the settlement lock in a transaction
+    const sysRef = db.doc('/settings/system');
+    let alreadySettled = false;
+    await db.runTransaction(async (txn) => {
+        const snap = await txn.get(sysRef);
+        const data = snap.exists ? snap.data() : {};
+        if (data['tournamentFinishedAt']) {
+            alreadySettled = true;
+            return; // abort the transaction without writing
+        }
+        // Atomically claim — write the marker now, before doing any work
+        txn.set(sysRef, { tournamentFinishedAt: firestore_1.FieldValue.serverTimestamp() }, { merge: true });
+    });
+    if (alreadySettled) {
+        throw new https_1.HttpsError('already-exists', 'Bonuses already settled. Clear tournamentFinishedAt to re-run.');
+    }
+    // 2. Find WC winner from final match
+    const finalSnap = await db.collection('matches')
+        .where('stage', '==', 'final')
+        .where('status', '==', 'finished')
+        .limit(1)
+        .get();
+    if (finalSnap.empty)
+        throw new https_1.HttpsError('failed-precondition', 'Final match not yet finished');
+    const finalMatch = finalSnap.docs[0].data();
+    const { score, homeTeam, awayTeam } = finalMatch;
+    const winnerCode = deriveWinner(score, homeTeam.code, awayTeam.code);
+    // 3. Get top scorer from api-football
+    const apiKey = process.env['API_FOOTBALL_KEY'] ?? '';
+    if (!apiKey)
+        throw new https_1.HttpsError('failed-precondition', 'API_FOOTBALL_KEY not configured');
+    const seasonId = await getSeasonId();
+    const tsRes = await fetch(`https://v3.football.api-sports.io/players/topscorers?league=1&season=${seasonId}`, { headers: { 'x-apisports-key': apiKey }, signal: AbortSignal.timeout(10_000) });
+    if (!tsRes.ok)
+        throw new https_1.HttpsError('internal', `api-football topscorers failed: ${tsRes.status}`);
+    const tsData = (await tsRes.json());
+    if (!tsData.response?.length)
+        throw new https_1.HttpsError('internal', 'No top scorer data');
+    const topScorerApiId = String(tsData.response[0].player.id);
+    const topScorerName = tsData.response[0].player.name;
+    // 4. Read bonus point values from settings
+    let bonusPoints = { topScorer: 10, worldCupWinner: 15 };
+    const scoringSnap = await db.doc('/settings/scoring').get();
+    if (scoringSnap.exists) {
+        const s = scoringSnap.data();
+        bonusPoints = {
+            topScorer: s.bonusPoints?.topScorer ?? 10,
+            worldCupWinner: s.bonusPoints?.worldCupWinner ?? 15,
+        };
+    }
+    // 5. Scan bonusPicks and compute awards
+    const bonusPicksSnap = await db.collection('bonusPicks').get();
+    const awards = [];
+    for (const pickDoc of bonusPicksSnap.docs) {
+        const pick = pickDoc.data();
+        let pts = 0;
+        if (pick.topScorer?.playerId === topScorerApiId)
+            pts += bonusPoints.topScorer;
+        if (pick.worldCupWinner?.teamCode === winnerCode)
+            pts += bonusPoints.worldCupWinner;
+        if (pts > 0)
+            awards.push({ uid: pickDoc.id, pts });
+    }
+    // 6. Update leaderboard entries
+    const affectedLeagueIds = new Set();
+    const awardResults = await Promise.allSettled(awards.map(async ({ uid: awardUid, pts }) => {
+        const userSnap = await db.collection('users').doc(awardUid).get();
+        if (!userSnap.exists)
+            return;
+        const userData = userSnap.data();
+        const leagueIds = userData.leagueIds ?? [];
+        await Promise.all(leagueIds.map(async (leagueId) => {
+            affectedLeagueIds.add(leagueId);
+            const entryRef = db.collection('leaderboard').doc(leagueId).collection('entries').doc(awardUid);
+            await entryRef.set({ totalPoints: firestore_1.FieldValue.increment(pts), lastUpdated: firestore_1.FieldValue.serverTimestamp() }, { merge: true });
+        }));
+    }));
+    awardResults.forEach((r, i) => {
+        if (r.status === 'rejected') {
+            console.error(`settleBonuses: failed to update leaderboard for award ${i}:`, r.reason);
+        }
+    });
+    // Recompute ranks — same pattern as calculatePoints
+    await Promise.all(Array.from(affectedLeagueIds).map(async (leagueId) => {
+        const entriesSnap = await db
+            .collection('leaderboard').doc(leagueId).collection('entries')
+            .orderBy('totalPoints', 'desc')
+            .orderBy('exactScores', 'desc')
+            .get();
+        const BATCH_LIMIT = 500;
+        const docs = entriesSnap.docs;
+        for (let i = 0; i < docs.length; i += BATCH_LIMIT) {
+            const chunk = docs.slice(i, i + BATCH_LIMIT);
+            const batch = db.batch();
+            for (let j = 0; j < chunk.length; j++)
+                batch.update(chunk[j].ref, { rank: i + j + 1 });
+            await batch.commit();
+        }
+        console.log(`settleBonuses: recomputed ranks for league ${leagueId}`);
+    }));
+    // 7. Audit log
+    await db.collection('auditLog').add({
+        type: 'bonuses-settled',
+        who: uid,
+        topScorerApiId,
+        topScorerName,
+        winnerCode,
+        usersAwarded: awards.length,
+        when: firestore_1.FieldValue.serverTimestamp(),
+    });
+    console.log(`settleBonuses: ${awards.length} user(s) awarded — top scorer: ${topScorerName}, winner: ${winnerCode}`);
+    return { topScorer: { apiId: topScorerApiId, name: topScorerName }, worldCupWinner: winnerCode, usersAwarded: awards.length };
 });
 //# sourceMappingURL=index.js.map

@@ -15,9 +15,18 @@ service cloud.firestore {
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
     }
 
+    // Returns the match document data for the given matchId.
+    // Firestore rules memoize get() calls with the same path within the same
+    // request, so two calls to matchDoc(matchId) count as one read.
+    function matchDoc(matchId) {
+      return get(/databases/$(database)/documents/matches/$(matchId)).data;
+    }
+
     // ─── /users/{uid} ────────────────────────────────────────────────────────
     // Read self, or any user who shares at least one league with the caller.
-    // Write self only — but only the allowed profile fields, or append-only leagueIds.
+    // Write self only — but only displayName/photoURL (profile fields).
+    // leagueIds is now managed exclusively by the joinLeague Cloud Function
+    // (Admin SDK bypasses rules), so client writes to leagueIds are removed.
     // Admin may read and write any user document.
     match /users/{uid} {
       allow read: if isAuthed() && (
@@ -28,23 +37,19 @@ service cloud.firestore {
         )
       );
 
-      // Self-writes: only displayName/photoURL may be changed, OR leagueIds may be appended (no removals).
-      allow write: if isAuthed() && request.auth.uid == uid && (
+      // Self-writes: only displayName and photoURL may be changed.
+      allow write: if isAuthed() && request.auth.uid == uid &&
         request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['displayName', 'photoURL']) ||
-        (
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['leagueIds']) &&
-          request.resource.data.leagueIds.hasAll(resource.data.leagueIds)
-        )
-      );
+          .hasOnly(['displayName', 'photoURL']);
 
       // Admin writes: any field.
       allow write: if isAdmin();
     }
 
     // ─── /picks/{uid}/matches/{matchId} ──────────────────────────────────────
-    // Self read+write only, and only while the corresponding match is unlocked.
-    // Admin may read any pick.
+    // Self read+write only, and only while the corresponding match is unlocked
+    // and before its lockAt time. Admin may read any pick.
+    // Field whitelist prevents clients from writing scoring fields.
     match /picks/{uid}/matches/{matchId} {
       allow read: if isAuthed() && (
         request.auth.uid == uid ||
@@ -54,7 +59,16 @@ service cloud.firestore {
       allow write: if isAuthed() &&
         request.auth.uid == uid &&
         request.resource.data.userId == uid &&
-        get(/databases/$(database)/documents/matches/$(matchId)).data.locked == false;
+        request.resource.data.matchId == matchId &&
+        request.resource.data.keys().hasOnly(['userId', 'matchId', 'homeGoals', 'awayGoals', 'submittedAt']) &&
+        request.resource.data.homeGoals is int &&
+        request.resource.data.homeGoals >= 0 &&
+        request.resource.data.homeGoals <= 20 &&
+        request.resource.data.awayGoals is int &&
+        request.resource.data.awayGoals >= 0 &&
+        request.resource.data.awayGoals <= 20 &&
+        matchDoc(matchId).locked == false &&
+        request.time < matchDoc(matchId).lockAt;
     }
 
     // ─── /matches/{matchId} ──────────────────────────────────────────────────
@@ -75,24 +89,17 @@ service cloud.firestore {
 
     // ─── /leagues/{leagueId} ─────────────────────────────────────────────────
     // Any authenticated user may read (needed for code-based lookup before joining).
-    // Self-join: authenticated user may append only their own uid to memberIds.
-    // Only admins may perform other writes.
+    // The self-join update rule has been removed: joinLeague is now a Cloud Function
+    // that uses Admin SDK, so no client writes to memberIds are needed.
+    // Only admins may write.
     match /leagues/{leagueId} {
       allow read: if isAuthed();
-
-      // Self-join: only add request.auth.uid to memberIds (no removals, no other field changes,
-      // and exactly one element is added per write — prevents bulk-adding foreign UIDs).
-      allow update: if isAuthed() &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberIds']) &&
-        request.resource.data.memberIds.hasAll(resource.data.memberIds) &&
-        request.resource.data.memberIds.size() == resource.data.memberIds.size() + 1 &&
-        request.resource.data.memberIds.hasAll([request.auth.uid]);
-
       allow write: if isAdmin();
     }
 
     // ─── /bonusPicks/{uid} ───────────────────────────────────────────────────
     // Self read+write only, and only before the tournament has started.
+    // Field whitelist prevents clients from writing unexpected fields.
     // Admin may read all.
     match /bonusPicks/{uid} {
       allow read: if isAuthed() && (
@@ -103,6 +110,7 @@ service cloud.firestore {
       allow write: if isAuthed() &&
         request.auth.uid == uid &&
         request.resource.data.userId == uid &&
+        request.resource.data.keys().hasOnly(['userId', 'topScorer', 'worldCupWinner']) &&
         request.time <
           get(/databases/$(database)/documents/settings/system).data.tournamentStartAt;
     }

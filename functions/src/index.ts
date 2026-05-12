@@ -144,6 +144,34 @@ async function getSeasonId(): Promise<number> {
   return 2026;
 }
 
+// ── joinLeague ────────────────────────────────────────────────
+// Callable: authenticated user joins a league by providing its code.
+// Verifies the code server-side before writing to Firestore so that
+// neither memberIds nor leagueIds need client-writable rules.
+export const joinLeague = onCall({ invoker: 'public' }, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Must be signed in');
+
+  const { leagueId, code } = request.data as { leagueId: string; code: string };
+  if (!leagueId || !code) throw new HttpsError('invalid-argument', 'leagueId and code are required');
+
+  const leagueSnap = await db.collection('leagues').doc(leagueId).get();
+  if (!leagueSnap.exists) throw new HttpsError('not-found', 'League not found');
+  const league = leagueSnap.data()!;
+  if (league['code'] !== code.toUpperCase().trim()) {
+    throw new HttpsError('permission-denied', 'Incorrect league code');
+  }
+  if ((league['memberIds'] as string[]).includes(uid)) {
+    return { success: true }; // Already a member — idempotent
+  }
+
+  const batch = db.batch();
+  batch.update(db.collection('leagues').doc(leagueId), { memberIds: FieldValue.arrayUnion(uid) });
+  batch.update(db.collection('users').doc(uid), { leagueIds: FieldValue.arrayUnion(leagueId) });
+  await batch.commit();
+  return { success: true };
+});
+
 // ── inviteUser ────────────────────────────────────────────────
 // Callable: admin sends an invite link for a given email.
 // Requires caller to have isAdmin custom claim.
