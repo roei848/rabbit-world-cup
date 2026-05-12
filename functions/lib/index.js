@@ -149,13 +149,13 @@ exports.joinLeague = (0, https_1.onCall)({ invoker: 'public' }, async (request) 
     const batch = db.batch();
     batch.update(db.collection('leagues').doc(leagueId), { memberIds: firestore_1.FieldValue.arrayUnion(uid) });
     batch.set(db.collection('users').doc(uid), { leagueIds: firestore_1.FieldValue.arrayUnion(leagueId) }, { merge: true });
-    await batch.commit();
-    await db.collection('auditLog').add({
+    batch.set(db.collection('auditLog').doc(), {
         type: 'league-join',
         who: uid,
         target: leagueId,
         when: firestore_1.FieldValue.serverTimestamp(),
     });
+    await batch.commit();
     return { success: true };
 });
 // ── inviteUser ────────────────────────────────────────────────
