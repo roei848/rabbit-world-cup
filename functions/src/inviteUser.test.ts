@@ -8,16 +8,21 @@
  * firebase-admin initialization (i.e. before importing from ./index).
  */
 
-import { describe, it, expect, beforeEach, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
 import { getAdminInviteCountToday } from './index';
-import { getFirestore } from 'firebase-admin/firestore';
+import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { getApp } from 'firebase-admin/app';
 
 // Re-use the Firestore instance that index.ts already initialized
-const db = getFirestore(getApp());
-const auditLog = db.collection('auditLog');
+let db: ReturnType<typeof getFirestore>;
+let auditLog: FirebaseFirestore.CollectionReference;
 
-/** Seed a batch of auditLog docs with a concrete JS Date and return their IDs */
+beforeAll(() => {
+  db = getFirestore(getApp());
+  auditLog = db.collection('auditLog');
+});
+
+/** Seed a batch of auditLog docs with a Firestore Timestamp and return their IDs */
 async function seedAuditEntries(
   uid: string,
   count: number,
@@ -28,7 +33,7 @@ async function seedAuditEntries(
   const batch = db.batch();
   for (let i = 0; i < count; i++) {
     const ref = auditLog.doc();
-    batch.set(ref, { type, who: uid, target: `user${i}@example.com`, when });
+    batch.set(ref, { type, who: uid, target: `user${i}@example.com`, when: Timestamp.fromDate(when) });
     ids.push(ref.id);
   }
   await batch.commit();
@@ -145,5 +150,14 @@ describe('getAdminInviteCountToday — rate-limit helper', () => {
 
     const count = await getAdminInviteCountToday(uid);
     expect(count).toBe(50);
+  });
+
+  it('does not count entries from tomorrow', async () => {
+    const uid = 'admin-uid-future';
+    const tomorrow = new Date(startOfTodayUTC().getTime() + 86_400_000);
+    const ids = await seedAuditEntries(uid, 3, tomorrow);
+    seededIds.push(...ids);
+    const count = await getAdminInviteCountToday(uid);
+    expect(count).toBe(0);
   });
 });

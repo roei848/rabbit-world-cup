@@ -206,10 +206,12 @@ export const joinLeague = onCall({ invoker: 'public' }, async (request) => {
 export async function getAdminInviteCountToday(uid: string): Promise<number> {
   const todayStr = new Date().toISOString().split('T')[0]; // e.g. "2026-05-12"
   const startOfDay = new Date(todayStr);                   // 2026-05-12T00:00:00.000Z
+  const endOfDay = new Date(startOfDay.getTime() + 86_400_000); // +24h
   const snap = await db.collection('auditLog')
     .where('type', '==', 'invite-sent')
     .where('who', '==', uid)
     .where('when', '>=', startOfDay)
+    .where('when', '<', endOfDay)
     .count()
     .get();
   return snap.data().count;
