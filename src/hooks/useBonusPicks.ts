@@ -23,8 +23,6 @@ export function isPickLocked(tournamentStartAt: Timestamp | null, now: Date): bo
   return now >= tournamentStartAt.toDate();
 }
 
-const noopAsync = async () => {};
-
 export function useBonusPicks(): UseBonusPicksResult {
   const { user } = useAuth();
   const [bonusPick, setBonusPick] = useState<BonusPickDoc | null>(null);
@@ -60,7 +58,7 @@ export function useBonusPicks(): UseBonusPicksResult {
         tournamentStartAtRef.current = tournamentStartAt;
 
         unsubscribeBonus = onSnapshot(
-          bonusPickDoc(user.uid),
+          bonusPickDoc(user!.uid),
           (snap) => { setBonusPick(snap.exists() ? snap.data() : null); setLoading(false); },
           (err) => { setError(err instanceof Error ? err : new Error(String(err))); setLoading(false); }
         );

@@ -174,3 +174,13 @@ export async function findLeagueByCode(code: string): Promise<(LeagueDoc & { id:
   const first = snap.docs[0];
   return { ...first.data(), id: first.id };
 }
+
+// ── Admin user helpers ───────────────────────────────────────
+
+export async function updateUserRole(uid: string, isAdmin: boolean): Promise<void> {
+  await updateDoc(doc(usersCol(), uid), { isAdmin });
+}
+
+export async function updateUserStatus(uid: string, status: 'active' | 'banned'): Promise<void> {
+  await updateDoc(doc(usersCol(), uid), { status });
+}
