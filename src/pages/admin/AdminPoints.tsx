@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Navigate, Link } from 'react-router-dom';
-import { getDocs, query, orderBy, limit } from 'firebase/firestore';
+import { getDocs, query, orderBy, limit, type Timestamp } from 'firebase/firestore';
 import { useTheme } from '../../theme/ThemeProvider';
 import { useAuth } from '../../contexts/AuthContext';
 import { FONTS } from '../../theme/tokens';
@@ -44,15 +44,25 @@ export function AdminPoints() {
   const [auditLog, setAuditLog] = useState<AuditRow[]>([]);
   const [auditLoading, setAuditLoading] = useState(true);
 
+  // Load errors
+  const [usersError, setUsersError] = useState('');
+  const [auditError, setAuditError] = useState('');
+
+  // Success auto-clear timer
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // ── Load users ──────────────────────────────────────────────
 
   const loadUsers = useCallback(async () => {
     setUsersLoading(true);
+    setUsersError('');
     try {
       const snap = await getDocs(usersCol());
       const rows: UserRow[] = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
       rows.sort((a, b) => a.displayName.localeCompare(b.displayName));
       setUsers(rows);
+    } catch (err) {
+      setUsersError(err instanceof Error ? err.message : 'Failed to load users.');
     } finally {
       setUsersLoading(false);
     }
@@ -62,11 +72,14 @@ export function AdminPoints() {
 
   const loadAuditLog = useCallback(async () => {
     setAuditLoading(true);
+    setAuditError('');
     try {
       const q = query(auditLogCol(), orderBy('when', 'desc'), limit(50));
       const snap = await getDocs(q);
       const rows: AuditRow[] = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
       setAuditLog(rows);
+    } catch (err) {
+      setAuditError(err instanceof Error ? err.message : 'Failed to load audit log.');
     } finally {
       setAuditLoading(false);
     }
@@ -78,6 +91,12 @@ export function AdminPoints() {
       loadAuditLog();
     }
   }, [loading, isAdmin, loadUsers, loadAuditLog]);
+
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    };
+  }, []);
 
   // ── Auth guards ─────────────────────────────────────────────
 
@@ -112,8 +131,16 @@ export function AdminPoints() {
     setFormError('');
     setSuccessMsg('');
 
+    if (!user) {
+      setFormError('Not authenticated.');
+      return;
+    }
     if (!selectedUser) {
       setFormError('Please select a user.');
+      return;
+    }
+    if (delta === 0) {
+      setFormError('Delta cannot be zero.');
       return;
     }
     if (!reason.trim()) {
@@ -121,18 +148,23 @@ export function AdminPoints() {
       return;
     }
 
+    const deltaLabel = delta > 0 ? `+${delta}` : String(delta);
+    if (!window.confirm(`Apply ${deltaLabel} pts to ${selectedUser.displayName}?\n\nReason: "${reason.trim()}"\n\nThis cannot be undone.`)) return;
+
     setSubmitting(true);
     try {
       await applyPointAdjustment(
-        user?.displayName ?? 'Admin',
-        user?.uid ?? '',
+        user.displayName ?? 'Admin',
+        user.uid,
         { id: selectedUser.id, displayName: selectedUser.displayName, leagueIds: selectedUser.leagueIds },
         delta,
         reason.trim(),
       );
       setDelta(0);
       setReason('');
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
       setSuccessMsg('Adjustment applied.');
+      successTimerRef.current = setTimeout(() => setSuccessMsg(''), 4000);
       await loadAuditLog();
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Failed to apply adjustment.');
@@ -170,7 +202,7 @@ export function AdminPoints() {
   const deltaColor = delta > 0 ? t.up : delta < 0 ? t.down : t.inkMuted;
   const deltaLabel = delta > 0 ? `+${delta}` : String(delta);
 
-  const applyDisabled = submitting || !selectedUser || !reason.trim();
+  const applyDisabled = submitting || !selectedUser || !reason.trim() || delta === 0;
 
   // ── Render ──────────────────────────────────────────────────
 
@@ -256,6 +288,11 @@ export function AdminPoints() {
               {/* User select */}
               <div style={{ marginBottom: 14 }}>
                 <label style={labelStyle} htmlFor="points-user">User</label>
+                {usersError && (
+                  <div style={{ color: t.down, fontSize: 12, fontFamily: FONTS.mono, marginBottom: 6 }}>
+                    {usersError}
+                  </div>
+                )}
                 {usersLoading ? (
                   <div style={{ ...inputStyle, color: t.inkMuted }}>Loading users…</div>
                 ) : (
@@ -437,6 +474,11 @@ export function AdminPoints() {
               Recent adjustments
             </div>
 
+            {auditError && (
+              <div style={{ color: t.down, fontSize: 12, fontFamily: FONTS.mono, marginBottom: 8 }}>
+                {auditError}
+              </div>
+            )}
             {auditLoading ? (
               <div style={{
                 background: t.surface,
@@ -472,7 +514,8 @@ export function AdminPoints() {
               }}>
                 {auditLog.map((entry, i) => {
                   const isLast = i === auditLog.length - 1;
-                  const whenStr = entry.when
+                  const when = entry.when as Timestamp;
+                  const whenStr = when
                     .toDate()
                     .toLocaleString(undefined, {
                       month: 'short',

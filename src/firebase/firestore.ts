@@ -216,7 +216,7 @@ export interface AuditLogEntry {
   targetUid: string;
   delta: number;
   reason: string;
-  when: Timestamp;
+  when: Timestamp | FieldValue;
 }
 
 export const auditLogConverter = makeConverter<AuditLogEntry>();
@@ -242,12 +242,16 @@ export async function applyPointAdjustment(
     targetUid: targetUser.id,
     delta,
     reason,
-    when: Timestamp.now(),
-  } as AuditLogEntry);
+    when: serverTimestamp(),
+  });
 
   for (const leagueId of targetUser.leagueIds) {
     const entryRef = doc(leaderboardEntriesCol(leagueId), targetUser.id);
-    batch.set(entryRef, { totalPoints: increment(delta) }, { merge: true });
+    const entrySnap = await getDoc(entryRef);
+    if (entrySnap.exists()) {
+      batch.update(entryRef, { totalPoints: increment(delta) });
+    }
+    // skip leagues where the user has no leaderboard entry yet
   }
 
   await batch.commit();
