@@ -11,6 +11,7 @@ import {
   query,
   where,
   Timestamp,
+  type FieldValue,
   type FirestoreDataConverter,
   type QueryDocumentSnapshot,
   type SnapshotOptions,
@@ -26,7 +27,7 @@ export interface UserDoc {
   photoURL: string | null;
   isAdmin: boolean;
   leagueIds: string[];
-  joinedAt: ReturnType<typeof serverTimestamp>;
+  joinedAt: Timestamp | FieldValue;
   status: 'active' | 'banned';
 }
 
@@ -35,7 +36,7 @@ export interface InviteDoc {
   invitedBy: string;
   leagueId: string | null;
   used: boolean;
-  expiresAt: Date;
+  expiresAt: Timestamp;
   createdAt: ReturnType<typeof serverTimestamp>;
 }
 

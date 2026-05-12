@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Navigate, Link } from 'react-router-dom';
-import { getDocs, Timestamp } from 'firebase/firestore';
+import { getDocs, Timestamp, type FieldValue } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { useTheme } from '../../theme/ThemeProvider';
 import { useAuth } from '../../contexts/AuthContext';
@@ -23,7 +23,7 @@ type ModalMode = 'invite' | 'edit' | null;
 
 // ── Helpers ─────────────────────────────────────────────────
 
-function formatJoinedAt(ts: ReturnType<typeof import('firebase/firestore').serverTimestamp>): string {
+function formatJoinedAt(ts: Timestamp | FieldValue | null): string {
   try {
     const t = ts as unknown as Timestamp;
     if (!t || typeof t.toDate !== 'function') return '—';
@@ -67,6 +67,7 @@ export function AdminUsers() {
   // List state
   const [users, setUsers] = useState<UserRow[]>([]);
   const [listLoading, setListLoading] = useState(true);
+  const [listError, setListError] = useState<string>('');
 
   // Modal state
   const [modalMode, setModalMode] = useState<ModalMode>(null);
@@ -90,11 +91,14 @@ export function AdminUsers() {
 
   const loadUsers = useCallback(async () => {
     setListLoading(true);
+    setListError('');
     try {
       const snap = await getDocs(usersCol());
       const rows: UserRow[] = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
       rows.sort((a, b) => a.displayName.localeCompare(b.displayName));
       setUsers(rows);
+    } catch (err) {
+      setListError(err instanceof Error ? err.message : 'Failed to load users');
     } finally {
       setListLoading(false);
     }
@@ -195,9 +199,12 @@ export function AdminUsers() {
   // ── Ban/unban handler ────────────────────────────────────────
 
   async function handleToggleBan(user: UserRow) {
+    const next: 'active' | 'banned' = user.status === 'banned' ? 'active' : 'banned';
+    if (next === 'banned') {
+      if (!window.confirm(`Ban ${user.displayName}? They will lose access immediately.`)) return;
+    }
     setBanningUid(user.id);
     try {
-      const next: 'active' | 'banned' = user.status === 'banned' ? 'active' : 'banned';
       await updateUserStatus(user.id, next);
       await loadUsers();
     } catch (err) {
@@ -328,6 +335,18 @@ export function AdminUsers() {
             + Invite member
           </button>
         </div>
+
+        {/* List error */}
+        {listError && (
+          <div style={{
+            color: t.down,
+            fontSize: 13,
+            fontFamily: FONTS.mono,
+            marginBottom: 16,
+          }}>
+            {listError}
+          </div>
+        )}
 
         {/* Users table */}
         <div style={{
