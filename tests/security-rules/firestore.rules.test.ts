@@ -22,6 +22,7 @@ import {
   updateDoc,
   deleteDoc,
   Timestamp,
+  serverTimestamp,
 } from 'firebase/firestore';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -282,7 +283,7 @@ describe('/picks/{uid}/matches/{matchId}', () => {
     );
   });
 
-  test('locked pick cannot be deleted by the owning user', async () => {
+  test('user cannot delete own pick (delete unconditionally blocked)', async () => {
     // match2 is locked; alice already has a pick seeded for match1 (unlocked).
     // Seed a locked-match pick via admin bypass first.
     await testEnv.withSecurityRulesDisabled(async (ctx) => {
@@ -301,6 +302,41 @@ describe('/picks/{uid}/matches/{matchId}', () => {
     const aliceDb = testEnv.authenticatedContext('alice').firestore();
     await assertFails(
       deleteDoc(doc(aliceDb, 'picks', 'alice', 'matches', 'match2')),
+    );
+  });
+
+  test('user cannot delete own pick even for unlocked match', async () => {
+    // Seed a pick on unlocked match1
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'picks', 'alice', 'matches', 'match1'), validPickPayload('alice', 'match1'));
+    });
+    const aliceDb = testEnv.authenticatedContext('alice').firestore();
+    await assertFails(
+      deleteDoc(doc(aliceDb, 'picks', 'alice', 'matches', 'match1'))
+    );
+  });
+
+  test('user cannot write pick with goal value above 20', async () => {
+    const aliceDb = testEnv.authenticatedContext('alice').firestore();
+    await assertFails(
+      setDoc(doc(aliceDb, 'picks', 'alice', 'matches', 'match1'), {
+        userId: 'alice',
+        matchId: 'match1',
+        homeGoals: 21,
+        awayGoals: 0,
+        submittedAt: serverTimestamp(),
+      })
+    );
+  });
+
+  test('user cannot read another user\'s pick', async () => {
+    // Seed bob's pick
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'picks', 'bob', 'matches', 'match1'), validPickPayload('bob', 'match1'));
+    });
+    const aliceDb = testEnv.authenticatedContext('alice').firestore();
+    await assertFails(
+      getDoc(doc(aliceDb, 'picks', 'bob', 'matches', 'match1'))
     );
   });
 });
@@ -437,6 +473,45 @@ describe('/bonusPicks/{uid}', () => {
   test('admin can read any bonus pick', async () => {
     const adminDb = testEnv.authenticatedContext('admin').firestore();
     await assertSucceeds(getDoc(doc(adminDb, 'bonusPicks', 'alice')));
+  });
+
+  test('user cannot write bonus pick with extra key in topScorer map', async () => {
+    const future = Timestamp.fromMillis(Date.now() + 86400000 * 30);
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'settings', 'system'), { tournamentStartAt: future });
+    });
+    const aliceDb = testEnv.authenticatedContext('alice').firestore();
+    await assertFails(
+      setDoc(doc(aliceDb, 'bonusPicks', 'alice'), {
+        userId: 'alice',
+        topScorer: {
+          playerId: 'player1',
+          playerName: 'John Doe',
+          submittedAt: serverTimestamp(),
+          extraField: 'evil',   // ← not in hasOnly whitelist
+        },
+        worldCupWinner: null,
+      })
+    );
+  });
+
+  test('user cannot write bonus pick with incomplete topScorer map (missing playerId)', async () => {
+    const future = Timestamp.fromMillis(Date.now() + 86400000 * 30);
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'settings', 'system'), { tournamentStartAt: future });
+    });
+    const aliceDb = testEnv.authenticatedContext('alice').firestore();
+    await assertFails(
+      setDoc(doc(aliceDb, 'bonusPicks', 'alice'), {
+        userId: 'alice',
+        topScorer: {
+          playerName: 'John Doe',
+          submittedAt: serverTimestamp(),
+          // missing playerId
+        },
+        worldCupWinner: null,
+      })
+    );
   });
 });
 
