@@ -95,6 +95,12 @@ export interface LeagueDoc {
   createdAt: Timestamp;
 }
 
+export interface ScoringDoc {
+  stageMultipliers: { group: number; r16: number; qf: number; sf: number; final: number };
+  basePoints: { exactScore: number; correctGap: number; correctWinner: number };
+  bonusPoints: { topScorer: number; worldCupWinner: number };
+}
+
 // ── Converters ───────────────────────────────────────────────
 
 function makeConverter<T extends object>(): FirestoreDataConverter<T> {
@@ -112,6 +118,7 @@ export const pickConverter            = makeConverter<PickDoc>();
 export const leaderboardEntryConverter = makeConverter<LeaderboardEntry>();
 export const bonusPickConverter        = makeConverter<BonusPickDoc>();
 export const leagueConverter           = makeConverter<LeagueDoc>();
+export const scoringConverter          = makeConverter<ScoringDoc>();
 
 // ── Collection refs ──────────────────────────────────────────
 
@@ -174,6 +181,19 @@ export async function findLeagueByCode(code: string): Promise<(LeagueDoc & { id:
   if (snap.empty) return null;
   const first = snap.docs[0];
   return { ...first.data(), id: first.id };
+}
+
+export function scoringDocRef() {
+  return doc(requireDb(), 'settings', 'scoring').withConverter(scoringConverter);
+}
+
+export async function getScoringDoc(): Promise<ScoringDoc | null> {
+  const snap = await getDoc(scoringDocRef());
+  return snap.exists() ? snap.data() : null;
+}
+
+export async function saveScoringDoc(data: ScoringDoc): Promise<void> {
+  await setDoc(scoringDocRef(), data);
 }
 
 // ── Admin user helpers ───────────────────────────────────────
