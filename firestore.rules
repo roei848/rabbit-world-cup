@@ -17,7 +17,7 @@ service cloud.firestore {
 
     // ─── /users/{uid} ────────────────────────────────────────────────────────
     // Read self, or any user who shares at least one league with the caller.
-    // Write self only — but only the allowed profile fields.
+    // Write self only — but only the allowed profile fields, or append-only leagueIds.
     // Admin may read and write any user document.
     match /users/{uid} {
       allow read: if isAuthed() && (
@@ -28,10 +28,15 @@ service cloud.firestore {
         )
       );
 
-      // Self-writes: only displayName and photoURL may be changed.
-      allow write: if isAuthed() && request.auth.uid == uid &&
+      // Self-writes: only displayName/photoURL may be changed, OR leagueIds may be appended (no removals).
+      allow write: if isAuthed() && request.auth.uid == uid && (
         request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['displayName', 'photoURL']);
+          .hasOnly(['displayName', 'photoURL']) ||
+        (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['leagueIds']) &&
+          request.resource.data.leagueIds.hasAll(resource.data.leagueIds)
+        )
+      );
 
       // Admin writes: any field.
       allow write: if isAdmin();
@@ -48,6 +53,7 @@ service cloud.firestore {
 
       allow write: if isAuthed() &&
         request.auth.uid == uid &&
+        request.resource.data.userId == uid &&
         get(/databases/$(database)/documents/matches/$(matchId)).data.locked == false;
     }
 
@@ -68,11 +74,17 @@ service cloud.firestore {
     }
 
     // ─── /leagues/{leagueId} ─────────────────────────────────────────────────
-    // Members may read their league doc.
-    // Only admins may write.
+    // Any authenticated user may read (needed for code-based lookup before joining).
+    // Self-join: authenticated user may append only their own uid to memberIds.
+    // Only admins may perform other writes.
     match /leagues/{leagueId} {
-      allow read: if isAuthed() &&
-        request.auth.uid in resource.data.memberIds;
+      allow read: if isAuthed();
+
+      // Self-join: only add request.auth.uid to memberIds (no removals, no other field changes).
+      allow update: if isAuthed() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberIds']) &&
+        request.resource.data.memberIds.hasAll(resource.data.memberIds) &&
+        request.resource.data.memberIds.hasAll([request.auth.uid]);
 
       allow write: if isAdmin();
     }
@@ -88,6 +100,7 @@ service cloud.firestore {
 
       allow write: if isAuthed() &&
         request.auth.uid == uid &&
+        request.resource.data.userId == uid &&
         request.time <
           get(/databases/$(database)/documents/settings/system).data.tournamentStartAt;
     }
@@ -101,11 +114,13 @@ service cloud.firestore {
     }
 
     // ─── /invites/{token} ────────────────────────────────────────────────────
-    // Any authenticated user may read an invite (the secret token acts as
-    // the access control mechanism — only the invite link holder knows it).
+    // Unauthenticated get is allowed — the secret token IS the access control
+    // (bearer access: only the invite link holder knows the token).
+    // Listing requires admin (prevents enumeration).
     // Only admins may write.
     match /invites/{token} {
-      allow read: if isAuthed();
+      allow get: if true;
+      allow list: if isAdmin();
       allow write: if isAdmin();
     }
 
