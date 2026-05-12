@@ -1,8 +1,121 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if false;
+
+    // ─── Helper functions ────────────────────────────────────────────────────
+
+    // Returns true when the caller is authenticated.
+    function isAuthed() {
+      return request.auth != null;
     }
+
+    // Returns true when the caller's user doc has isAdmin == true.
+    function isAdmin() {
+      return isAuthed() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
+    }
+
+    // ─── /users/{uid} ────────────────────────────────────────────────────────
+    // Read self, or any user who shares at least one league with the caller.
+    // Write self only — but only the allowed profile fields.
+    // Admin may read and write any user document.
+    match /users/{uid} {
+      allow read: if isAuthed() && (
+        request.auth.uid == uid ||
+        isAdmin() ||
+        resource.data.leagueIds.hasAny(
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.leagueIds
+        )
+      );
+
+      // Self-writes: only displayName and photoURL may be changed.
+      allow write: if isAuthed() && request.auth.uid == uid &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['displayName', 'photoURL']);
+
+      // Admin writes: any field.
+      allow write: if isAdmin();
+    }
+
+    // ─── /picks/{uid}/matches/{matchId} ──────────────────────────────────────
+    // Self read+write only, and only while the corresponding match is unlocked.
+    // Admin may read any pick.
+    match /picks/{uid}/matches/{matchId} {
+      allow read: if isAuthed() && (
+        request.auth.uid == uid ||
+        isAdmin()
+      );
+
+      allow write: if isAuthed() &&
+        request.auth.uid == uid &&
+        get(/databases/$(database)/documents/matches/$(matchId)).data.locked == false;
+    }
+
+    // ─── /matches/{matchId} ──────────────────────────────────────────────────
+    // Public read for authenticated users.
+    // No client writes — Cloud Functions use Admin SDK (bypasses rules).
+    match /matches/{matchId} {
+      allow read: if isAuthed();
+      allow write: if false;
+    }
+
+    // ─── /leaderboard/{leagueId}/entries/{userId} ────────────────────────────
+    // Public read for authenticated users.
+    // No client writes — Cloud Functions use Admin SDK.
+    match /leaderboard/{leagueId}/entries/{userId} {
+      allow read: if isAuthed();
+      allow write: if false;
+    }
+
+    // ─── /leagues/{leagueId} ─────────────────────────────────────────────────
+    // Members may read their league doc.
+    // Only admins may write.
+    match /leagues/{leagueId} {
+      allow read: if isAuthed() &&
+        request.auth.uid in resource.data.memberIds;
+
+      allow write: if isAdmin();
+    }
+
+    // ─── /bonusPicks/{uid} ───────────────────────────────────────────────────
+    // Self read+write only, and only before the tournament has started.
+    // Admin may read all.
+    match /bonusPicks/{uid} {
+      allow read: if isAuthed() && (
+        request.auth.uid == uid ||
+        isAdmin()
+      );
+
+      allow write: if isAuthed() &&
+        request.auth.uid == uid &&
+        request.time <
+          get(/databases/$(database)/documents/settings/system).data.tournamentStartAt;
+    }
+
+    // ─── /settings/{document} ────────────────────────────────────────────────
+    // Any authenticated user may read settings.
+    // Only admins may write.
+    match /settings/{document} {
+      allow read: if isAuthed();
+      allow write: if isAdmin();
+    }
+
+    // ─── /invites/{token} ────────────────────────────────────────────────────
+    // Any authenticated user may read an invite (the secret token acts as
+    // the access control mechanism — only the invite link holder knows it).
+    // Only admins may write.
+    match /invites/{token} {
+      allow read: if isAuthed();
+      allow write: if isAdmin();
+    }
+
+    // ─── /auditLog/{logId} ───────────────────────────────────────────────────
+    // Admin read only.
+    // No client writes — Cloud Functions use Admin SDK.
+    match /auditLog/{logId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
   }
 }
