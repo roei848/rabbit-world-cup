@@ -65,10 +65,10 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // ─── /leaderboard/{leagueId}/entries/{userId} ────────────────────────────
-    // Public read for authenticated users.
+    // ─── /leaderboard/** ─────────────────────────────────────────────────────
+    // Public read for authenticated users (covers all depths: league doc + entries).
     // No client writes — Cloud Functions use Admin SDK.
-    match /leaderboard/{leagueId}/entries/{userId} {
+    match /leaderboard/{document=**} {
       allow read: if isAuthed();
       allow write: if false;
     }
@@ -80,10 +80,12 @@ service cloud.firestore {
     match /leagues/{leagueId} {
       allow read: if isAuthed();
 
-      // Self-join: only add request.auth.uid to memberIds (no removals, no other field changes).
+      // Self-join: only add request.auth.uid to memberIds (no removals, no other field changes,
+      // and exactly one element is added per write — prevents bulk-adding foreign UIDs).
       allow update: if isAuthed() &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberIds']) &&
         request.resource.data.memberIds.hasAll(resource.data.memberIds) &&
+        request.resource.data.memberIds.size() == resource.data.memberIds.size() + 1 &&
         request.resource.data.memberIds.hasAll([request.auth.uid]);
 
       allow write: if isAdmin();
