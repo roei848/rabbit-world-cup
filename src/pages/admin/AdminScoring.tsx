@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Navigate, Link } from 'react-router-dom';
 import { useTheme } from '../../theme/ThemeProvider';
 import { useAuth } from '../../contexts/AuthContext';
@@ -132,18 +132,23 @@ export function AdminScoring() {
   const { isAdmin, loading } = useAuth();
 
   const [fetching, setFetching] = useState(true);
+  const [fetchError, setFetchError] = useState<string>('');
   const [scoring, setScoring] = useState<ScoringDoc>(DEFAULT_SCORING);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState<string>('');
+  const saveSuccessTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Load ─────────────────────────────────────────────────────
 
   const loadScoring = useCallback(async () => {
     setFetching(true);
+    setFetchError('');
     try {
       const doc = await getScoringDoc();
       setScoring(doc ?? DEFAULT_SCORING);
+    } catch (err) {
+      setFetchError(err instanceof Error ? err.message : 'Failed to load scoring settings');
     } finally {
       setFetching(false);
     }
@@ -154,6 +159,12 @@ export function AdminScoring() {
       loadScoring();
     }
   }, [loading, isAdmin, loadScoring]);
+
+  useEffect(() => {
+    return () => {
+      if (saveSuccessTimerRef.current) clearTimeout(saveSuccessTimerRef.current);
+    };
+  }, []);
 
   // ── Auth guards ──────────────────────────────────────────────
 
@@ -208,7 +219,8 @@ export function AdminScoring() {
     try {
       await saveScoringDoc(scoring);
       setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 3000);
+      if (saveSuccessTimerRef.current) clearTimeout(saveSuccessTimerRef.current);
+      saveSuccessTimerRef.current = setTimeout(() => setSaveSuccess(false), 3000);
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Save failed');
     } finally {
@@ -258,6 +270,18 @@ export function AdminScoring() {
             ← Admin
           </Link>
         </div>
+        {fetchError ? (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          paddingTop: 80,
+        }}>
+          <div style={{ color: t.down, fontSize: 14, fontFamily: FONTS.mono }}>
+            {fetchError}
+          </div>
+        </div>
+      ) : (
         <div style={{
           display: 'flex',
           alignItems: 'center',
@@ -268,6 +292,7 @@ export function AdminScoring() {
             Loading scoring settings…
           </div>
         </div>
+      )}
       </div>
     );
   }

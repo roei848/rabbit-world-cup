@@ -183,9 +183,8 @@ export async function findLeagueByCode(code: string): Promise<(LeagueDoc & { id:
   return { ...first.data(), id: first.id };
 }
 
-export function scoringDocRef() {
-  return doc(requireDb(), 'settings', 'scoring').withConverter(scoringConverter);
-}
+export const scoringDocRef = () =>
+  doc(requireDb(), 'settings', 'scoring').withConverter(scoringConverter);
 
 export async function getScoringDoc(): Promise<ScoringDoc | null> {
   const snap = await getDoc(scoringDocRef());
