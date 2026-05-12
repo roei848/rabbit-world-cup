@@ -252,9 +252,12 @@ export function AdminScoring() {
           alignItems: 'center',
           justifyContent: 'space-between',
         }}>
-          <h1 style={{ fontSize: 18, fontWeight: 700, color: t.ink, margin: 0, fontFamily: FONTS.display }}>
-            Scoring
-          </h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ fontSize: 24 }}>⚙️</span>
+            <h1 style={{ fontSize: 18, fontWeight: 700, color: t.ink, margin: 0, fontFamily: FONTS.display }}>
+              Scoring
+            </h1>
+          </div>
           <Link
             to="/admin"
             style={{
@@ -310,9 +313,12 @@ export function AdminScoring() {
         alignItems: 'center',
         justifyContent: 'space-between',
       }}>
-        <h1 style={{ fontSize: 18, fontWeight: 700, color: t.ink, margin: 0, fontFamily: FONTS.display }}>
-          Scoring
-        </h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ fontSize: 24 }}>⚙️</span>
+          <h1 style={{ fontSize: 18, fontWeight: 700, color: t.ink, margin: 0, fontFamily: FONTS.display }}>
+            Scoring
+          </h1>
+        </div>
         <Link
           to="/admin"
           style={{

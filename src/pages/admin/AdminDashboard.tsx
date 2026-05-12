@@ -11,7 +11,6 @@ type SeedState = 'idle' | 'loading' | 'success' | 'error';
 export function AdminDashboard() {
   const { theme: t } = useTheme();
   const { isAdmin, loading } = useAuth();
-  console.log('isAdmin', isAdmin);
   const [seedState, setSeedState] = useState<SeedState>('idle');
   const [seedCount, setSeedCount] = useState<number>(0);
   const [seedError, setSeedError] = useState<string>('');
