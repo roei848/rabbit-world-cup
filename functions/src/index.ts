@@ -196,6 +196,25 @@ export const joinLeague = onCall({ invoker: 'public' }, async (request) => {
   return { success: true };
 });
 
+// ── inviteUser helpers ────────────────────────────────────────
+
+/**
+ * Returns the number of 'invite-sent' auditLog entries written by the given
+ * admin uid since the start of today (UTC midnight). Used to enforce the
+ * 50-invites-per-admin-per-day rate limit.
+ */
+export async function getAdminInviteCountToday(uid: string): Promise<number> {
+  const todayStr = new Date().toISOString().split('T')[0]; // e.g. "2026-05-12"
+  const startOfDay = new Date(todayStr);                   // 2026-05-12T00:00:00.000Z
+  const snap = await db.collection('auditLog')
+    .where('type', '==', 'invite-sent')
+    .where('who', '==', uid)
+    .where('when', '>=', startOfDay)
+    .count()
+    .get();
+  return snap.data().count;
+}
+
 // ── inviteUser ────────────────────────────────────────────────
 // Callable: admin sends an invite link for a given email.
 // Requires caller to have isAdmin custom claim.
@@ -208,16 +227,8 @@ export const inviteUser = onCall({ invoker: 'public' }, async (request) => {
   if (!email) throw new HttpsError('invalid-argument', 'email is required');
 
   // Rate-limit: max 50 invites per admin per day
-  const today = new Date().toISOString().split('T')[0];
-  const auditRef = db.collection('auditLog');
-  const todayCount = await auditRef
-    .where('type', '==', 'invite-sent')
-    .where('who', '==', uid)
-    .where('when', '>=', new Date(today))
-    .count()
-    .get();
-
-  if (todayCount.data().count >= 50) {
+  const count = await getAdminInviteCountToday(uid);
+  if (count >= 50) {
     throw new HttpsError('resource-exhausted', 'Invite limit reached for today (50/day)');
   }
 
@@ -233,7 +244,7 @@ export const inviteUser = onCall({ invoker: 'public' }, async (request) => {
     createdAt: FieldValue.serverTimestamp(),
   });
 
-  await auditRef.add({
+  await db.collection('auditLog').add({
     type:   'invite-sent',
     who:    uid,
     target: email,
