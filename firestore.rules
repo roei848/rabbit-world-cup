@@ -115,13 +115,15 @@ service cloud.firestore {
           !('topScorer' in request.resource.data) ||
           request.resource.data.topScorer == null ||
           (request.resource.data.topScorer is map &&
-           request.resource.data.topScorer.keys().hasOnly(['playerId', 'playerName', 'submittedAt']))
+           request.resource.data.topScorer.keys().hasOnly(['playerId', 'playerName', 'submittedAt']) &&
+           request.resource.data.topScorer.keys().hasAll(['playerId', 'playerName', 'submittedAt']))
         ) &&
         (
           !('worldCupWinner' in request.resource.data) ||
           request.resource.data.worldCupWinner == null ||
           (request.resource.data.worldCupWinner is map &&
-           request.resource.data.worldCupWinner.keys().hasOnly(['teamCode', 'submittedAt']))
+           request.resource.data.worldCupWinner.keys().hasOnly(['teamCode', 'submittedAt']) &&
+           request.resource.data.worldCupWinner.keys().hasAll(['teamCode', 'submittedAt']))
         ) &&
         request.time <
           get(/databases/$(database)/documents/settings/system).data.tournamentStartAt;

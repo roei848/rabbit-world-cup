@@ -185,14 +185,13 @@ export const joinLeague = onCall({ invoker: 'public' }, async (request) => {
   const batch = db.batch();
   batch.update(db.collection('leagues').doc(leagueId), { memberIds: FieldValue.arrayUnion(uid) });
   batch.set(db.collection('users').doc(uid), { leagueIds: FieldValue.arrayUnion(leagueId) }, { merge: true });
-  await batch.commit();
-
-  await db.collection('auditLog').add({
+  batch.set(db.collection('auditLog').doc(), {
     type: 'league-join',
     who: uid,
     target: leagueId,
     when: FieldValue.serverTimestamp(),
   });
+  await batch.commit();
 
   return { success: true };
 });
