@@ -572,6 +572,7 @@ export function AdminUsers() {
                           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                             <input
                               readOnly
+                              aria-label="Invite URL"
                               value={inviteResult.message}
                               style={{
                                 flex: 1,
