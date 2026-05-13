@@ -4,12 +4,14 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { onDocumentUpdated } from 'firebase-functions/v2/firestore';
 import { beforeUserCreated } from 'firebase-functions/v2/identity';
+import { defineSecret } from 'firebase-functions/params';
 import * as crypto from 'crypto';
 import { scorePick, DEFAULT_SCORING, type ScoringSettings, type Stage } from './scoring';
 
 initializeApp();
 
 const db = getFirestore();
+const apiFootballKey = defineSecret('API_FOOTBALL_KEY');
 
 // ── API-Football types ────────────────────────────────────────
 interface ApiFixtureStatus {
@@ -106,7 +108,7 @@ function mapRound(round: string): 'group' | 'r16' | 'qf' | 'sf' | 'final' {
 }
 
 async function fetchFixtures(path: string): Promise<ApiFixture[]> {
-  const apiKey = process.env['API_FOOTBALL_KEY'] ?? '';
+  const apiKey = apiFootballKey.value();
   const url = `https://v3.football.api-sports.io${path}`;
   const res = await fetch(url, {
     headers: { 'x-apisports-key': apiKey },
@@ -332,13 +334,7 @@ export const onUserCreated = beforeUserCreated(async (event) => {
 // Scheduled every 1 minute. Fetches live scores from api-football.com
 // and upserts existing /matches docs. Uses smart-skip to avoid
 // unnecessary API calls when no live/imminent matches are present.
-export const pollFootballAPI = onSchedule('every 1 minutes', async () => {
-  const apiKey = process.env['API_FOOTBALL_KEY'] ?? '';
-  if (!apiKey) {
-    console.warn('pollFootballAPI: API_FOOTBALL_KEY is not set — skipping');
-    return;
-  }
-
+export const pollFootballAPI = onSchedule({ schedule: 'every 1 minutes', secrets: [apiFootballKey] }, async () => {
   const now = new Date();
   const imminentCutoff = new Date(now.getTime() + 15 * 60 * 1000); // now + 15 min
 
@@ -472,15 +468,10 @@ export const lockPicks = onSchedule('every 5 minutes', async () => {
 // ── seedTournament ────────────────────────────────────────────
 // HTTPS callable (admin only). Fetches all WC 2026 fixtures from
 // api-football.com and seeds /matches in Firestore.
-export const seedTournament = onCall({ invoker: 'public' }, async (request) => {
+export const seedTournament = onCall({ invoker: 'public', secrets: [apiFootballKey] }, async (request) => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Must be signed in');
   await assertAdmin(uid);
-
-  const apiKey = process.env['API_FOOTBALL_KEY'] ?? '';
-  if (!apiKey) {
-    throw new HttpsError('failed-precondition', 'API_FOOTBALL_KEY not configured');
-  }
 
   const seasonId = await getSeasonId();
   console.log(`seedTournament: fetching WC fixtures for season ${seasonId}`);
@@ -711,14 +702,12 @@ export const calculatePoints = onDocumentUpdated('matches/{matchId}', async (eve
 // ── cacheWCPlayers ────────────────────────────────────────────
 // HTTPS callable (admin only). Fetches all WC 2026 players from
 // api-football.com (paginated) and caches them in /cache/wcPlayers.
-export const cacheWCPlayers = onCall({ invoker: 'public' }, async (request) => {
+export const cacheWCPlayers = onCall({ invoker: 'public', secrets: [apiFootballKey] }, async (request) => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Must be signed in');
   await assertAdmin(uid);
 
-  const apiKey = process.env['API_FOOTBALL_KEY'] ?? '';
-  if (!apiKey) throw new HttpsError('failed-precondition', 'API_FOOTBALL_KEY not configured');
-
+  const apiKey = apiFootballKey.value();
   const seasonId = await getSeasonId();
 
   const allPlayers: WCPlayer[] = [];
@@ -777,7 +766,7 @@ export const cacheWCPlayers = onCall({ invoker: 'public' }, async (request) => {
 // HTTPS callable (admin only). Run once after the tournament ends.
 // Evaluates all bonus picks against the actual top scorer and WC winner,
 // updates leaderboard entries, recomputes ranks, and marks the tournament settled.
-export const settleBonuses = onCall({ invoker: 'public' }, async (request) => {
+export const settleBonuses = onCall({ invoker: 'public', secrets: [apiFootballKey] }, async (request) => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Must be signed in');
   await assertAdmin(uid);
@@ -816,8 +805,7 @@ export const settleBonuses = onCall({ invoker: 'public' }, async (request) => {
   const winnerCode = deriveWinner(score, homeTeam.code, awayTeam.code);
 
   // 3. Get top scorer from api-football
-  const apiKey = process.env['API_FOOTBALL_KEY'] ?? '';
-  if (!apiKey) throw new HttpsError('failed-precondition', 'API_FOOTBALL_KEY not configured');
+  const apiKey = apiFootballKey.value();
   const seasonId = await getSeasonId();
 
   const tsRes = await fetch(
