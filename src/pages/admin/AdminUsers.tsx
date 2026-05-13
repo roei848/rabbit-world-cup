@@ -155,12 +155,13 @@ export function AdminUsers() {
     try {
       if (!app) throw new Error('Firebase not configured');
       const functions = getFunctions(app);
-      const inviteUserFn = httpsCallable<{ email: string; leagueId?: string }, { token: string }>(
+      const inviteUserFn = httpsCallable<{ email: string; leagueId?: string }, { token: string; inviteUrl: string }>(
         functions,
         'inviteUser',
       );
-      await inviteUserFn({ email: inviteEmail.trim(), leagueId: inviteLeagueId.trim() || undefined });
-      setInviteResult({ type: 'success', message: 'Invite sent!' });
+      const result = await inviteUserFn({ email: inviteEmail.trim(), leagueId: inviteLeagueId.trim() || undefined });
+      const fullUrl = `${window.location.origin}${result.data.inviteUrl}`;
+      setInviteResult({ type: 'success', message: fullUrl });
       setInviteEmail('');
       setInviteLeagueId('');
     } catch (err) {
@@ -565,7 +566,47 @@ export function AdminUsers() {
                       fontFamily: FONTS.mono,
                       fontSize: 12,
                     }}>
-                      {inviteResult.message}
+                      {inviteResult.type === 'error' ? inviteResult.message : (
+                        <div>
+                          <div style={{ marginBottom: 6, fontWeight: 600 }}>Invite link ready — share this URL:</div>
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                            <input
+                              readOnly
+                              value={inviteResult.message}
+                              style={{
+                                flex: 1,
+                                background: 'transparent',
+                                border: `1px solid ${t.border}`,
+                                borderRadius: 6,
+                                padding: '5px 8px',
+                                color: t.up,
+                                fontFamily: FONTS.mono,
+                                fontSize: 11,
+                                outline: 'none',
+                              }}
+                              onFocus={(e) => e.currentTarget.select()}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => navigator.clipboard.writeText(inviteResult.message)}
+                              style={{
+                                background: t.up,
+                                color: '#fff',
+                                border: 'none',
+                                borderRadius: 6,
+                                padding: '5px 10px',
+                                fontSize: 11,
+                                fontFamily: FONTS.body,
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                                flexShrink: 0,
+                              }}
+                            >
+                              Copy
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 
