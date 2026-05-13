@@ -82,7 +82,7 @@ function Home() {
       </button>
 
       <div style={{ color: t.inkDim, fontSize: 11, textAlign: 'center', maxWidth: 280, lineHeight: 1.6, fontFamily: FONTS.body }}>
-        Phase 2 complete. Auth, invite flow, and Cloud Functions scaffolded.
+        Black Rabbit World Cup 2026
       </div>
     </div>
   );
