@@ -1,22 +1,24 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider, useTheme } from './theme/ThemeProvider';
 import { AuthProvider } from './contexts/AuthContext';
 import { ProtectedRoute, AdminRoute } from './components/layout/ProtectedRoute';
 import { ErrorBoundary } from './components/layout/ErrorBoundary';
 import { LogoLockup } from './components/primitives';
-import { Login } from './pages/public/Login';
-import { Invite } from './pages/public/Invite';
-import { Matches } from './pages/app/Matches';
-import { Leaderboard } from './pages/app/Leaderboard';
-import { Picks } from './pages/app/Picks';
-import { Bonus } from './pages/app/Bonus';
-import { Leagues } from './pages/app/Leagues';
-import { AdminDashboard } from './pages/admin/AdminDashboard';
-import { AdminUsers } from './pages/admin/AdminUsers';
-import { AdminScoring } from './pages/admin/AdminScoring';
-import { AdminLeagues } from './pages/admin/AdminLeagues';
-import { AdminPoints } from './pages/admin/AdminPoints';
 import { FONTS } from './theme/tokens';
+
+const Login = lazy(() => import('./pages/public/Login').then(m => ({ default: m.Login })));
+const Invite = lazy(() => import('./pages/public/Invite').then(m => ({ default: m.Invite })));
+const Matches = lazy(() => import('./pages/app/Matches').then(m => ({ default: m.Matches })));
+const Leaderboard = lazy(() => import('./pages/app/Leaderboard').then(m => ({ default: m.Leaderboard })));
+const Picks = lazy(() => import('./pages/app/Picks').then(m => ({ default: m.Picks })));
+const Bonus = lazy(() => import('./pages/app/Bonus').then(m => ({ default: m.Bonus })));
+const Leagues = lazy(() => import('./pages/app/Leagues').then(m => ({ default: m.Leagues })));
+const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
+const AdminUsers = lazy(() => import('./pages/admin/AdminUsers').then(m => ({ default: m.AdminUsers })));
+const AdminScoring = lazy(() => import('./pages/admin/AdminScoring').then(m => ({ default: m.AdminScoring })));
+const AdminLeagues = lazy(() => import('./pages/admin/AdminLeagues').then(m => ({ default: m.AdminLeagues })));
+const AdminPoints = lazy(() => import('./pages/admin/AdminPoints').then(m => ({ default: m.AdminPoints })));
 
 function Home() {
   const { theme: t, themeKey, toggleTheme } = useTheme();
@@ -88,6 +90,7 @@ function Home() {
 
 function AppRoutes() {
   return (
+    <Suspense fallback={<div style={{ minHeight: '100vh' }} />}>
     <Routes>
       {/* Public */}
       <Route path="/" element={<Home />} />
@@ -111,6 +114,7 @@ function AppRoutes() {
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </Suspense>
   );
 }
 
